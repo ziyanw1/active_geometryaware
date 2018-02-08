@@ -8,8 +8,8 @@ from multiprocessing.dummy import Pool
 from subprocess import call
 import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-#sys.path.append(os.path.join(BASE_DIR, '../../models/chen-hsuan'))
-import util as util
+sys.path.append(os.path.join(BASE_DIR, '../../utils'))
+import util
 
 # nice -n 10 blender blank.blend -b -P render_depth_pair.py -- 02958343 ../blender_renderings/02958343.list 128 views
 

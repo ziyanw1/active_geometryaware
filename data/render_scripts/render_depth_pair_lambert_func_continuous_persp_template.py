@@ -5,16 +5,32 @@ import numpy as np
 import shutil
 import scipy.io
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(BASE_DIR, '../../models/chen-hsuan'))
-import util as util
+sys.path.append(os.path.join(BASE_DIR, '../../utils'))
+import util 
+import OpenEXR
+import Imath
+import array
+import scipy.misc as sm
 
 # scp -r jerrypiglet@128.237.184.26:Bitsync/3dv2017_PBA/data/render_scripts/render_depth_pair_lambert* . && nice -n 10
-# blender blank.blend -b -P render_depth_pair_lambert_main.py -- 02958343 name ./lists/02958343_select.list 128
+# blender blank.blend -b -P render_depth_pair_lambert_main.py -- 02958343 ./lists/02958343_select.list NAME 128
 
 # nice -n 10 blender blank.blend -b -P render_depth_pair_lambert_func.py -- 02958343 MODEL RES views model_id
 
 BASE_OUT_DIR = '../data_cache/'
 res_list = [128]
+
+## transfer Z to inverse Z
+def get_inverse_depth(Z_path, res):
+    file = OpenEXR.InputFile(Z_path)
+    dw = file.header()['dataWindow']
+    sz = (dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1) #(H,W)
+    
+    # Read the three color channels as 32-bit floats
+    FLOAT = Imath.PixelType(Imath.PixelType.FLOAT)
+    (R,G,B) = [np.reshape(np.asarray(array.array('f', file.channel(Chan, FLOAT))), (sz[0], sz[1], 1)) for Chan in ("R", "G", "B") ]
+
+    return np.reciprocal(R.reshape(res, res))
 
 ## determine camera center position by rho, azim, elev
 def objectCenteredCamPos(rho,azim,elev):
@@ -270,6 +286,9 @@ for bkg in range(1):
         save_path = base_path + "{2}/res{1}_{3}/{0}".format(MODEL,res,CATEGORY,NAME)
         #save_path = base_path + "{2}/res{1}_debug_perspInfinite/{0}".format(MODEL,res,CATEGORY)
         #save_path = base_path + "{2}/debug_persp/{0}".format(MODEL,res,CATEGORY)
+        if os.path.exists(save_path):
+            shutil.rmtree(save_path)
+
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
             
@@ -301,9 +320,12 @@ for bkg in range(1):
                 scene.render.filepath = "{0}temp.png".format(fo.base_path)
                 bpy.ops.render.render(write_still=True)
 
-                shutil.copyfile("{0}/Z0001.exr".format(fo.base_path),"{0}/{1}.exr".format(save_path,i))
-                shutil.copyfile("{0}/RGB0001.exr".format(fo.base_path),"{0}/{1}_rgb.exr".format(save_path,i))
-                shutil.copyfile(scene.render.filepath,"{0}/{1}_{2}_{3}.png".format(save_path,int(azim),int(elev),bkg))
+                invZ = get_inverse_depth("{0}/Z0001.exr".format(fo.base_path), res)
+                #shutil.copyfile("{0}/Z0001.exr".format(fo.base_path),"{0}/{1}_{2}.exr".format(save_path,int(azim),int(elev)))
+                #shutil.copyfile("{0}/RGB0001.exr".format(fo.base_path),"{0}/{1}_{2}_rgb.exr".format(save_path,int(azim),int(elev)))
+                sm.imsave("{0}/invZ_{1}_{2}.png".format(save_path,int(azim),int(elev)) , invZ)
+                shutil.copyfile(scene.render.filepath,"{0}/RGB_{1}_{2}.png".format(save_path,int(azim),int(elev)))
+
                 q_extr_list.append(np.array(q_extr))
                 t_extr_list.append(np.array(t_extr))
                 angles_list.append(np.stack([azim, elev, theta]))
