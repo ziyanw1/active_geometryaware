@@ -229,7 +229,7 @@ else:
     lights_num = 35
     scene.world.light_settings.ao_factor = 0.15
 shape_file = "/dataset/ShapeNetCore.v1/{0}/{1}/model.obj".format(CATEGORY,MODEL)
-lights_num = 20
+lights_num = 35
 scene.world.light_settings.ao_factor = 0.05
 bpy.ops.import_scene.obj(filepath=shape_file) 
 
