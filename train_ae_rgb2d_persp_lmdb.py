@@ -20,15 +20,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
-# import provider
 import tf_util
-from pc_util import draw_point_cloud, point_cloud_three_views
 
-# from utils_gen import *
-from depthestimate import tf_nndistance
-from pcd_ae_2_reg_lmdb_24576_fullSlim_persp import PCD_ae
+from ae_rgb2depth import AE_rgb2d
 
-from geo_util import *
 
 np.random.seed(0)
 tf.set_random_seed(0)
@@ -116,26 +111,42 @@ def train(ae):
     i = 0 
     try:
         while not ae.coord.should_stop():
-            ae,sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
+            ae.sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
 
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
-    pass
+            summary, step, loss, recon_loss = ae.sess.run([ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss], \
+                feed_dict=feed_dict)
 
-def get_degree_error(tws0, tws1):
-    error_list = []
-    for i in range(tws0.shape[0]):
-        R0 = tw2R(tws0[i])
-        R = tw2R(tws1[i])
-        delta_R = np.dot(R, R0.T)
-        delta_degree = np.rad2deg(np.linalg.norm(R2tw(delta_R)))
-        error_list.append(delta_degree)
-    return error_list
+            log_string('Iteration: {}, loss: {}, recon_loss: {}'.format(i, loss, recon_loss))
+
+            i += 1
+
+            if i > 1000:
+                break
+    except tf.errors.OutOfRangeError:
+        print('Done training')
+    finally:
+        ae.coord.request_stop()
+
+    ae.coord.join(ae.threads)
+    ae.sess.close()
+
+
+#def get_degree_error(tws0, tws1):
+#    error_list = []
+#    for i in range(tws0.shape[0]):
+#        R0 = tw2R(tws0[i])
+#        R = tw2R(tws1[i])
+#        delta_R = np.dot(R, R0.T)
+#        delta_degree = np.rad2deg(np.linalg.norm(R2tw(delta_R)))
+#        error_list.append(delta_degree)
+#    return error_list
          
 if __name__ == "__main__":
-    MODEL = importlib.import_module(FLAGS.model_file) # import network module
-    MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
+    #MODEL = importlib.import_module(FLAGS.model_file) # import network module
+    #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
     
     FLAGS.LOG_DIR = FLAGS.LOG_DIR + '/' + FLAGS.task_name
     FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
@@ -157,8 +168,8 @@ if __name__ == "__main__":
             print tf_util.toRed('To Be Restored...')
 
     tf_util.mkdir(os.path.join(FLAGS.LOG_DIR, 'saved_images'))
-    os.system('cp %s %s' % (MODEL_FILE, FLAGS.LOG_DIR)) # bkp of model def
-    os.system('cp train.py %s' % (FLAGS.LOG_DIR)) # bkp of train procedure
+    #os.system('cp %s %s' % (MODEL_FILE, FLAGS.LOG_DIR)) # bkp of model def
+    #os.system('cp train.py %s' % (FLAGS.LOG_DIR)) # bkp of train procedure
 
 
     FLAGS.LOG_FOUT = open(os.path.join(FLAGS.LOG_DIR, 'log_train.txt'), 'w')
@@ -167,7 +178,7 @@ if __name__ == "__main__":
     #prepare_plot()
     log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))
 
-    ae = PCD_ae(FLAGS)
+    ae = AE_rgb2d(FLAGS)
     if FLAGS.restore:
         restore(ae)
     train(ae)

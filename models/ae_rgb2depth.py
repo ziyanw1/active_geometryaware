@@ -9,6 +9,7 @@ import os
 import tensorflow.contrib.layers as ly
 from utils import util
 from utils import tf_util
+from rgb2d_lmdb_loader import data_loader 
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
@@ -20,6 +21,7 @@ def lrelu(x, leak=0.2, name='lrelu'):
 class AE_rgb2d(object):
     def __init__(self, FLAGS):
         self.FLAGS = FLAGS
+        self.data_loader = data_loader(self.FLAGS)
 
         self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
 
@@ -115,19 +117,20 @@ class AE_rgb2d(object):
     def _create_network(self):
         with tf.device('/gpu:0'):
 
-            ## TODO: load data
+            # TODO: load data
             #self.data_loader = DataLoader(self.FLAGS)
-            #self.rgb_batch = self.data_loader.rgb_batch
-            #self.depth_batch = self.data_loader.depth_batch
+            self.rgb_batch = self.data_loader.rgb_batch
+            self.invZ_batch = self.data_loader.invZ_batch
+            self.rgb_batch_norm = tf.subtract(tf.div(self.rgb_batch, 255.), 0.5)
 
-            self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
-            self.depth_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_depth')
+            #self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
+            #self.invZ_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_invZ')
             
-            self.depth_pred, self.z_rgb = self._create_unet(self.rgb_batch,trainable=True, scope_name='unet_rgb2depth') 
+            self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch,trainable=True, scope_name='unet_rgb2depth') 
 
 
     def _create_loss(self):
-        self.depth_recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(self.depth_pred-self.depth_batch), [1,2]), 0)
+        self.depth_recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(self.invZ_pred-self.invZ_batch), [1,2,3]), 0)
 
         self.loss = self.depth_recon_loss
 

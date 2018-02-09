@@ -332,6 +332,7 @@ for bkg in range(1):
                 #shutil.copyfile("{0}/Z0001.exr".format(fo.base_path),"{0}/{1}_{2}.exr".format(save_path,int(azim),int(elev)))
                 #shutil.copyfile("{0}/RGB0001.exr".format(fo.base_path),"{0}/{1}_{2}_rgb.exr".format(save_path,int(azim),int(elev)))
                 sm.imsave("{0}/invZ_{1}_{2}.png".format(save_path,int(azim),int(elev)) , invZ)
+                np.save("{0}/invZ_{1}_{2}.npy".format(save_path,int(azim),int(elev)) , invZ)
                 shutil.copyfile(scene.render.filepath,"{0}/RGB_{1}_{2}.png".format(save_path,int(azim),int(elev)))
 
                 q_extr_list.append(np.array(q_extr))
