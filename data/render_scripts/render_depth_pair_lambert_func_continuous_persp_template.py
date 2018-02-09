@@ -265,7 +265,7 @@ for i in range(15):
 # if pos[1]<0: theta = 2*np.pi-theta
 # elev = np.rad2deg(phi)
 # azim0 = np.rad2deg(theta)
-rho = 1
+rho = 2
 # theta = np.random.rand()*360
 
 #azim0 = 0.
