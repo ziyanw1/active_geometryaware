@@ -168,7 +168,8 @@ camera = bpy.data.objects["Camera"]
 camera.data.type = "PERSP"
 print('aad', camera.data.lens, 'sensor_HW', camera.data.sensor_height, camera.data.sensor_width)
 camera.data.lens = 92
-camera.data.sensor_width = 51.2
+#camera.data.sensor_width = 49.303
+camera.data.sensor_width = 49.303
 camera.data.sensor_height = camera.data.sensor_width
 
 # compositor nodes
@@ -304,9 +305,9 @@ for bkg in range(1):
                 Rt,R_extr, q_extr,t_extr, t_bcam2world = cameraExtrinsicMatrix(q,camPos)
 
                 camera.rotation_mode = "QUATERNION"
-                camera.location[0] = camPos[0] + t_bcam2world[0]
-                camera.location[1] = camPos[1] +t_bcam2world[1]
-                camera.location[2] = camPos[2] +t_bcam2world[2]
+                camera.location[0] = camPos[0] #+ t_bcam2world[0]
+                camera.location[1] = camPos[1] #+t_bcam2world[1]
+                camera.location[2] = camPos[2] #+t_bcam2world[2]
                 camera.rotation_quaternion[0] = q[0]
                 camera.rotation_quaternion[1] = q[1]
                 camera.rotation_quaternion[2] = q[2]
