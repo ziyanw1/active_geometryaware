@@ -21,3 +21,9 @@ All rendering datas are located in data/data_cache/blender_renderings/$CATEGORY_
 
 The files in each directory contains RGB and inverse depth data. The nameing rules are RGB_$AZIMUTH_$ELEVATION.jpg invZ_$AZIMUTH_$ELEVATION.npy
 
+## TODO
+
+- add restore and save for training
+- add test and logging
+- add unprojection part
+- add reninforcement learning part for camera actor
