@@ -59,7 +59,7 @@ flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
 flags.DEFINE_boolean('if_gen_bn', False, 'If use batch normalization for the mesh generator')
-flags.DEFINE_float('bn_decay', 0.9, 'Decay rate for batch normalization [default: 0.9]')
+flags.DEFINE_float('bn_decay', 0.95, 'Decay rate for batch normalization [default: 0.9]')
 flags.DEFINE_boolean("if_transform", False, "if use two transform layers")
 flags.DEFINE_float('reg_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
@@ -77,11 +77,11 @@ flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
 FLAGS = flags.FLAGS
 
-POINTCLOUDSIZE = FLAGS.num_point
-if FLAGS.if_deconv:
-    OUTPUTPOINTS = FLAGS.num_point
-else:
-    OUTPUTPOINTS = FLAGS.num_point/2
+#POINTCLOUDSIZE = FLAGS.num_point
+#if FLAGS.if_deconv:
+#    OUTPUTPOINTS = FLAGS.num_point
+#else:
+#    OUTPUTPOINTS = FLAGS.num_point/2
 FLAGS.BN_INIT_DECAY = 0.5
 FLAGS.BN_DECAY_DECAY_RATE = 0.5
 FLAGS.BN_DECAY_DECAY_STEP = float(FLAGS.decay_step)
@@ -112,6 +112,15 @@ def restore(ae):
     pass
 
 def train(ae):
+    
+    i = 0 
+    try:
+        while not ae.coord.should_stop():
+            ae,sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
+
+            tic = time.time()
+            feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
+
     pass
 
 def get_degree_error(tws0, tws1):
