@@ -193,8 +193,12 @@ if not os.path.isdir(fo.base_path):
 fo.format.file_format = "OPEN_EXR"
 fo.file_slots.new("RGB")
 fo.file_slots.new("Z")
+fo.file_slots.new("NORM")
 tree.links.new(rl.outputs["Image"],fo.inputs["RGB"])
 tree.links.new(rl.outputs["Z"],fo.inputs["Z"])
+tree.links.new(rl.outputs["Normal"],fo.inputs["NORM"])
+#print(rl.outputs.keys())
+#sys.exit()
 
 # set environment lighting
 scene.world.light_settings.use_ambient_occlusion = True # https://docs.blender.org/manual/en/dev/render/blender_render/world/ambient_occlusion.html
