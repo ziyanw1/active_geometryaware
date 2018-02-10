@@ -118,6 +118,9 @@ class lmdb_writer(DataFlow):
                 
     def size(self):
         return len(self.model_ids) * VIEWS
+    
+def get_surface_from_depth(invZ):
+    pass
 
 def read_png_to_uint8(img_name):
     img = mpimg.imread(img_name)
