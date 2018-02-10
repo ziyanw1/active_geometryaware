@@ -101,11 +101,11 @@ class lmdb_writer(DataFlow):
                 for e in elev_all:
                     image_name = os.path.join(render_out_path, '{}/RGB_{}_{}.png'.format(model_id, int(a), int(e)))
                     invZ_name = os.path.join(render_out_path, '{}/invZ_{}_{}.npy'.format(model_id, int(a), int(e)))
-                    rgb_single = read_png_to_uint8(image_name)
+                    rgb_single, mask_single = read_png_to_uint8(image_name)
                     invZ_single = np.load(invZ_name)
                     invZ_single = invZ_single[:, :, None]
 
-                    yield [rgb_single, invZ_single, np.asarray([a, e, 0.], dtype=np.float32)]
+                    yield [rgb_single, invZ_single, mask_single, np.asarray([a, e, 0.], dtype=np.float32)]
 
             #for view in range(VIEWS):
             #    image_name = render_out_path + '/%s/%d_0.png'%(model_id, view)
@@ -125,7 +125,7 @@ def read_png_to_uint8(img_name):
     mask = img[:, :, 3]
     mask = np.tile(np.expand_dims(mask, 2), (1, 1,3))
     new_img = new_img * mask + np.ones_like(new_img, dtype=np.float32) * (1.0 - mask)
-    return (new_img*255.).astype(np.uint8)
+    return (new_img*255.).astype(np.uint8), mask
 
 def get_models(category_name, splits = ['train', 'test', 'val']):
     model_ids = []
