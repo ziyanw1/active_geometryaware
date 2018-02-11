@@ -44,9 +44,9 @@ flags.DEFINE_string('ae_file', '', '')
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
-flags.DEFINE_float('learning_rate', 1e-5, 'Initial learning rate [default: 0.001]') #used to be 3e-5
+flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
-flags.DEFINE_string('optimizer', 'momentum', 'adam or momentum [default: adam]')
+flags.DEFINE_string('optimizer', 'adam', 'adam or momentum [default: adam]')
 flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 200000]')
 flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
 # arch (magenta)
@@ -116,7 +116,7 @@ def train(ae):
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
-            summary, step, loss, recon_loss = ae.sess.run([ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss], \
+            opt, summary, step, loss, recon_loss = ae.sess.run([ae.optimizer, ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss], \
                 feed_dict=feed_dict)
 
             log_string('Iteration: {}, loss: {}, recon_loss: {}'.format(i, loss, recon_loss))
