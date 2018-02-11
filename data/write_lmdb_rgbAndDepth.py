@@ -143,6 +143,7 @@ def get_models(category_name, splits = ['train', 'test', 'val']):
     for split in splits:
         listFile = "./render_scripts/lists/PTNlist_v2/%s_%sids.txt"%(category_name, split)
         listFile = os.path.join("./render_scripts/lists/{}_debug.txt".format(category_name))
+        listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
         #print listFile
         #sys.exit()
         with open(listFile) as file:
@@ -343,6 +344,7 @@ if __name__ == "__main__":
             # write_path = '/data_tmp/lmdbqqqq'
             lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.lmdb"%(cat_name[category_name], sample_num, lmdb_name_append)
             lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.lmdb')
+            lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}.lmdb'.format(split))
 
             command = 'rm -rf %s'%lmdb_write
             print command
