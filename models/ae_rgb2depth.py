@@ -126,11 +126,12 @@ class AE_rgb2d(object):
             #self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
             #self.invZ_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_invZ')
             
-            self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch,trainable=True, scope_name='unet_rgb2depth') 
+            self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_rgb2depth') 
 
 
     def _create_loss(self):
-        self.depth_recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(self.invZ_pred-self.invZ_batch), [1,2,3]), 0)
+        self.depth_recon_loss = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(self.invZ_pred-self.invZ_batch),
+            [1,2,3])), 0)
 
         self.loss = self.depth_recon_loss
 

@@ -12,7 +12,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorpack import *
 import gc
-from plyfile import PlyData, PlyElement
+#from plyfile import PlyData, PlyElement
 import tables
 from multiprocessing import Pool
 import os
@@ -103,7 +103,15 @@ class lmdb_writer(DataFlow):
                     invZ_name = os.path.join(render_out_path, '{}/invZ_{}_{}.npy'.format(model_id, int(a), int(e)))
                     rgb_single, mask_single = read_png_to_uint8(image_name)
                     invZ_single = np.load(invZ_name)
-                    invZ_single = invZ_single[:, :, None]
+                    print mask_single.shape
+                    print mask_single.dtype
+                    if invZ_single.ndim == 2:
+                        invZ_single = invZ_single[:, :, None]
+                    if mask_single.ndim == 2:
+                        mask_single = mask_single[:, :, None]
+                    if mask_single.shape[2] == 3:
+                        mask_single = mask_single[:, :, 0]
+                        mask_single = mask_single[:, :, None]
 
                     yield [rgb_single, invZ_single, mask_single, np.asarray([a, e, 0.], dtype=np.float32)]
 

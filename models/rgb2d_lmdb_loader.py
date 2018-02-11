@@ -137,12 +137,14 @@ class data_loader(object):
         self.rgb_batch_train, self.invZ_batch_train, self.mask_batch_train, self.angles_batch_train = read_batch_generator\
             (generator=self.ds_train.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32], \
                 shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
-                self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], [self.batch_size, 3]], batch_size=1, queue_capacity=100)
+                self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
+                [self.batch_size, 3]], batch_size=1, queue_capacity=100)
 
         self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.angles_batch_test = read_batch_generator\
             (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32], \
                 shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
-                self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], [self.batch_size, 3]], batch_size=1, queue_capacity=100)
+                self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
+                [self.batch_size, 3]], batch_size=1, queue_capacity=100)
 
 
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
