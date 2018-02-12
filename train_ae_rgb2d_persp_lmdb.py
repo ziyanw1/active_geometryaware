@@ -43,6 +43,7 @@ flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
+flags.DEFINE_integer('voxel_resolution', 32, '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')

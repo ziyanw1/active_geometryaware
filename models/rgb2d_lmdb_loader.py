@@ -90,6 +90,7 @@ class data_loader(object):
         FLAGS = flags
         self.out_size = (FLAGS.num_point, 3)
         self.resolution = FLAGS.resolution
+        self.vox_reso = FLAGS.voxel_resolution
         self.is_training = tf.placeholder(dtype=bool,shape=[],name='gen-is_training')
 
         # data_lmdb_path = "/home/rz1/Documents/Research/3dv2017_PBA/data/lmdb"
@@ -134,19 +135,23 @@ class data_loader(object):
         # TestDataSpeed(self.ds_test).start_test()
         self.ds_test.reset_state()
 
-        self.rgb_batch_train, self.invZ_batch_train, self.mask_batch_train, self.sn_batch_train, self.angles_batch_train = read_batch_generator\
-            (generator=self.ds_train.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32], \
+        self.rgb_batch_train, self.invZ_batch_train, self.mask_batch_train, self.sn_batch_train,\
+            self.angles_batch_train, self.vox_batch_train = read_batch_generator\
+            (generator=self.ds_train.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32,\
+                tf.uint8], \
                 shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
                 self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
                 [self.batch_size, self.resolution, self.resolution, 3],\
-                [self.batch_size, 3]], batch_size=1, queue_capacity=100)
+                [self.batch_size, 3], [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=1, queue_capacity=100)
 
-        self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.sn_batch_test, self.angles_batch_test = read_batch_generator\
-            (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32], \
+        self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.sn_batch_test,\
+            self.angles_batch_test, self.vox_batch_test = read_batch_generator\
+            (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32,
+                tf.uint8], \
                 shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
                 self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
                 [self.batch_size, self.resolution, self.resolution, 3],\
-                [self.batch_size, 3]], batch_size=1, queue_capacity=100)
+                [self.batch_size, 3], [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=1, queue_capacity=100)
 
 
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
@@ -168,4 +173,8 @@ class data_loader(object):
         self.angles_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.angles_batch_train), \
             lambda: tf.to_float(self.angles_batch_test)), [-1, 3])
+
+        self.voxel_batch = tf.reshape(tf.cond(self.is_training, \
+            lambda: tf.to_float(self.vox_batch_train), \
+            lambda: tf.to_float(self.vox_batch_test)), [-1, self.vox_reso, self.vox_reso, self.vox_reso])
 
