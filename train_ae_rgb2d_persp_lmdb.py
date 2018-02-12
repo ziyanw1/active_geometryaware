@@ -65,6 +65,7 @@ flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
 flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator")
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 # log and drawing (blue)
+flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
 flags.DEFINE_integer("save_every_step", 1000, "save every ? step")
@@ -173,8 +174,14 @@ if __name__ == "__main__":
     else:
         # os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
         if not(FLAGS.restore):
-            delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
-            if delete_key == 'y' or delete_key == "":
+            
+            def check_delete():
+                if FLAGS.force_delete:
+                    return True
+                delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
+                return delete_key == 'y' or delete_key == ''
+            
+            if check_delete():
                 os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
                 os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
                 print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR+FLAGS.CHECKPOINT_DIR)

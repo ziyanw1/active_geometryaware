@@ -35,6 +35,8 @@ class AE_rgb2d(object):
 
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
+
+        self._test()
         
         self._create_network()
         self._create_loss()
@@ -54,6 +56,12 @@ class AE_rgb2d(object):
         # create summary
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
+    def _test(self):
+        print '='*10
+        print self.data_loader.voxel_batch
+        #let's visualize voxels
+        exit()
+        
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
         with tf.variable_scope(scope_name) as scope:

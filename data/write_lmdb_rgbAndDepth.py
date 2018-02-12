@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 # scp jerrypiglet@128.237.133.169:Bitsync/3dv2017_PBA/data/write_lmdb_imageAndShape_direct2.py . && CUDA_VISIBLE_DEVICES=3 python write_lmdb_imageAndShape_direct2.py --ae_file '/newfoundland/rz1/log/finalAE_1e-5_bnNObn_car24576__bb10/'
 
 import numpy as np
