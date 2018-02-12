@@ -203,6 +203,7 @@ class AE_rgb2d(object):
             self.rgb_batch = self.data_loader.rgb_batch
             self.invZ_batch = self.data_loader.invZ_batch
             self.mask_batch = self.data_loader.mask_batch
+            print self.mask_batch.get_shape().as_list()
             self.sn_batch = self.data_loader.sn_batch
             self.rgb_batch_norm = tf.subtract(tf.div(self.rgb_batch, 255.), 0.5)
 
@@ -211,14 +212,21 @@ class AE_rgb2d(object):
             
             #self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_rgb2depth') 
             self.z_rgb = self._create_encoder(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_encoder') 
-            self.invZ_pred = self._create_decoder(self.z_rgb, out_channel=1, trainable=True, if_bn=True, scope_name='unet_decoder')
+            self.preds = self._create_decoder(self.z_rgb, out_channel=5, trainable=True, if_bn=True, scope_name='unet_decoder')
+            self.invZ_pred, self.mask_pred, self.sn_pred = tf.split(self.preds, [1,1,3], axis=3, name='split')
 
 
     def _create_loss(self):
         self.depth_recon_loss = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(self.invZ_pred-self.invZ_batch),
-            [1,2,3])), 0)
+            [1,2,3])), 0, name='depth_recon_loss')
+        
+        self.sn_recon_loss = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(self.sn_pred-self.sn_batch),
+            [1,2,3])), 0, name='sn_recon_loss')
 
-        self.loss = self.depth_recon_loss
+        self.mask_cls_loss = tf.reduce_mean(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.mask_batch, \
+            logits=self.mask_pred), [1,2,3]), 0, name='mask_cls_loss')
+
+        self.loss = self.depth_recon_loss + self.sn_recon_loss + self.mask_cls_loss
 
 
     def _create_optimizer(self):
@@ -244,9 +252,15 @@ class AE_rgb2d(object):
 
         self.summary_loss_depth_recon_train = tf.summary.scalar('train/loss_depth_recon', self.depth_recon_loss)
         self.summary_loss_depth_recon_test = tf.summary.scalar('test/loss_depth_recon', self.depth_recon_loss)
+        self.summary_loss_sn_recon_train = tf.summary.scalar('train/loss_sn_recon', self.sn_recon_loss)
+        self.summary_loss_sn_recon_test = tf.summary.scalar('test/loss_sn_recon', self.sn_recon_loss)
+        self.summary_loss_mask_cls_train = tf.summary.scalar('train/loss_mask_cls', self.mask_cls_loss)
+        self.summary_loss_mask_cls_test = tf.summary.scalar('test/loss_mask_cls', self.mask_cls_loss)
 
-        self.summary_train = [self.summary_loss_train, self.summary_loss_depth_recon_train, self.summary_learning_rate]
-        self.summary_test = [self.summary_loss_test, self.summary_loss_depth_recon_test]
+        self.summary_train = [self.summary_loss_train, self.summary_loss_depth_recon_train,
+            self.summary_loss_sn_recon_train, self.summary_loss_mask_cls_train, self.summary_learning_rate]
+        self.summary_test = [self.summary_loss_test, self.summary_loss_depth_recon_test,
+            self.summary_loss_sn_recon_test, self.summary_loss_mask_cls_test]
 
         self.merge_train = tf.summary.merge(self.summary_train)
         self.merge_test = tf.summary.merge(self.summary_test)

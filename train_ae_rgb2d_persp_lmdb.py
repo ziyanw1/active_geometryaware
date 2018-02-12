@@ -116,12 +116,20 @@ def train(ae):
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
-            opt, summary, step, loss, recon_loss = ae.sess.run([ae.optimizer, ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss], \
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = ae.sess.run([ae.optimizer, \
+                ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss], \
                 feed_dict=feed_dict)
 
-            log_string('Iteration: {}, loss: {}, recon_loss: {}'.format(i, loss, recon_loss))
+            log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
+                loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
 
             i += 1
+
+            if i%FLAGS.save_every_step == 0:
+                save(ae, i, i, i)
+
+            if i%FLAGS.test_every_step == 0:
+                test(ae)
 
             #if i > 1000:
             #    break
@@ -132,6 +140,10 @@ def train(ae):
 
     ae.coord.join(ae.threads)
     ae.sess.close()
+
+
+def test(ae):
+    pass
 
 
 #def get_degree_error(tws0, tws1):
