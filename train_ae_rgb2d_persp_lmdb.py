@@ -25,6 +25,7 @@ sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 import tf_util
 
+from visualizers import Vis
 from ae_rgb2depth import AE_rgb2d
 
 
@@ -73,6 +74,7 @@ flags.DEFINE_boolean("if_test", True, "if test")
 flags.DEFINE_integer("test_every_step", 20, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
 flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
+flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
 flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
 FLAGS = flags.FLAGS
@@ -112,6 +114,8 @@ def restore(ae):
     pass
 
 def train(ae):
+
+    v = Vis()
     
     i = 0 
     try:
@@ -123,11 +127,12 @@ def train(ae):
             
             ops_to_run = [
                 ae.optimizer, ae.merge_train, ae.counter, ae.loss,
-                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss
+                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss,
+                ae.vis
             ]
 
             stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
-            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss, vis = stuff
 
             log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
@@ -140,6 +145,9 @@ def train(ae):
             if i%FLAGS.test_every_step == 0:
                 test(ae)
 
+            if i%FLAGS.vis_every_step == 0:
+                v.process(vis, i)
+            
             #if i > 1000:
             #    break
     except tf.errors.OutOfRangeError:

@@ -59,8 +59,10 @@ class AE_rgb2d(object):
     def _test(self):
         print '='*10
         print self.data_loader.voxel_batch
+        
+        self.vis = self.data_loader.voxel_batch
         #let's visualize voxels
-        exit()
+        #exit()
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
