@@ -108,11 +108,92 @@ class AE_rgb2d(object):
                 net_up1 = slim.conv2d_transpose(net_up2_, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', \
                     scope='unet_deconv1')
                 net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
-                net_out_depth = slim.conv2d_transpose(net_up1_, out_channel, kernel_size=[4,4], stride=[2,2], padding='SAME', \
-                    activation_fn=tf.tanh, normalizer_fn=None, normalizer_params=None, scope='unet_out')
+                net_out_ = slim.conv2d_transpose(net_up1_, out_channel, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
 
             
-        return net_out_depth, net_bottleneck
+        return net_out_, net_bottleneck
+    
+    def _create_encoder(self, rgb, trainable=True, if_bn=False, reuse=False, scope_name='unet_encoder'):
+
+        with tf.variable_scope(scope_name) as scope:
+            if reuse:
+                scope.reuse_variables()
+
+            if if_bn:
+                batch_normalizer_gen = slim.batch_norm
+                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
+            else:
+                #self._print_arch('=== NOT Using BN for GENERATOR!')
+                batch_normalizer_gen = None
+                batch_norm_params_gen = None
+
+            if self.FLAGS.if_l2Reg:
+                weights_regularizer = slim.l2_regularizer(1e-5)
+            else:
+                weights_regularizer = None
+
+
+            with slim.arg_scope([slim.fully_connected],
+                    activation_fn=self.activation_fn,
+                    trainable=trainable,
+                    normalizer_fn=batch_normalizer_gen,
+                    normalizer_params=batch_norm_params_gen,
+                    weights_regularizer=weights_regularizer):
+
+                net_down1 = slim.conv2d(rgb, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv1')
+                net_down2 = slim.conv2d(net_down1, 128, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv2')
+                net_down3 = slim.conv2d(net_down2, 256, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv3')
+                net_down4 = slim.conv2d(net_down3, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv4')
+                net_down5 = slim.conv2d(net_down4, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv5')
+                net_down6 = slim.conv2d(net_down5, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv6')
+                net_bottleneck = slim.conv2d(net_down6, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv7')
+
+        return net_bottleneck
+    
+    def _create_decoder(self, z_rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_decoder'):
+
+        with tf.variable_scope(scope_name) as scope:
+            if reuse:
+                scope.reuse_variables()
+
+            if if_bn:
+                batch_normalizer_gen = slim.batch_norm
+                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
+            else:
+                #self._print_arch('=== NOT Using BN for GENERATOR!')
+                batch_normalizer_gen = None
+                batch_norm_params_gen = None
+
+            if self.FLAGS.if_l2Reg:
+                weights_regularizer = slim.l2_regularizer(1e-5)
+            else:
+                weights_regularizer = None
+
+
+            with slim.arg_scope([slim.fully_connected],
+                    activation_fn=self.activation_fn,
+                    trainable=trainable,
+                    normalizer_fn=batch_normalizer_gen,
+                    normalizer_params=batch_norm_params_gen,
+                    weights_regularizer=weights_regularizer):
+
+                net_up6 = slim.conv2d_transpose(z_rgb, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv6')
+                net_up5 = slim.conv2d_transpose(net_up6, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv5')
+                net_up4 = slim.conv2d_transpose(net_up5, 512, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv4')
+                net_up3 = slim.conv2d_transpose(net_up4, 256, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv3')
+                net_up2 = slim.conv2d_transpose(net_up3, 128, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv2')
+                net_up1 = slim.conv2d_transpose(net_up2, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    scope='unet_deconv1')
+                net_out_ = slim.conv2d_transpose(net_up1, out_channel, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+                    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
+
+        return net_out_
 
     def _create_network(self):
         with tf.device('/gpu:0'):
@@ -121,12 +202,16 @@ class AE_rgb2d(object):
             #self.data_loader = DataLoader(self.FLAGS)
             self.rgb_batch = self.data_loader.rgb_batch
             self.invZ_batch = self.data_loader.invZ_batch
+            self.mask_batch = self.data_loader.mask_batch
+            self.sn_batch = self.data_loader.sn_batch
             self.rgb_batch_norm = tf.subtract(tf.div(self.rgb_batch, 255.), 0.5)
 
             #self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
             #self.invZ_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_invZ')
             
-            self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_rgb2depth') 
+            #self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_rgb2depth') 
+            self.z_rgb = self._create_encoder(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_encoder') 
+            self.invZ_pred = self._create_decoder(self.z_rgb, out_channel=1, trainable=True, if_bn=True, scope_name='unet_decoder')
 
 
     def _create_loss(self):
