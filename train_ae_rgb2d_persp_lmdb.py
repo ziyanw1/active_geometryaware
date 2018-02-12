@@ -46,9 +46,10 @@ flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
-flags.DEFINE_integer('batch_size', 32, 'Batch Size during training [default: 32]')
+flags.DEFINE_integer('voxel_resolution', 32, '')
+flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
-flags.DEFINE_float('momentum', 0.9, 'Initial learning rate [default: 0.9]')
+flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
 flags.DEFINE_string('optimizer', 'adam', 'adam or momentum [default: adam]')
 flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 200000]')
 flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
@@ -119,15 +120,23 @@ def train(ae):
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
-            summary, step, loss, recon_loss = ae.sess.run([ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss], \
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = ae.sess.run([ae.optimizer, \
+                ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss], \
                 feed_dict=feed_dict)
 
-            log_string('Iteration: {}, loss: {}, recon_loss: {}'.format(i, loss, recon_loss))
+            log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
+                loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
 
             i += 1
 
-            if i > 1000:
-                break
+            if i%FLAGS.save_every_step == 0:
+                save(ae, i, i, i)
+
+            if i%FLAGS.test_every_step == 0:
+                test(ae)
+
+            #if i > 1000:
+            #    break
     except tf.errors.OutOfRangeError:
         print('Done training')
     finally:
@@ -135,6 +144,10 @@ def train(ae):
 
     ae.coord.join(ae.threads)
     ae.sess.close()
+
+
+def test(ae):
+    pass
 
 
 #def get_degree_error(tws0, tws1):

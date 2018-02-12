@@ -5,6 +5,7 @@ import math
 import os, sys
 import os.path
 import scipy.io as sio
+import scipy.ndimage as ndimg
 import matplotlib.pyplot as plt
 import time
 import random
@@ -12,7 +13,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from tensorpack import *
 import gc
-from plyfile import PlyData, PlyElement
+#from plyfile import PlyData, PlyElement
 import tables
 from multiprocessing import Pool
 import os
@@ -26,6 +27,8 @@ sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, '../models'))
 sys.path.append(os.path.join(BASE_DIR, '../utils'))
 
+import binvox_rw
+
 #global FLAGS
 #flags = tf.flags
 #flags.DEFINE_string('ae_file', '', '')
@@ -37,6 +40,7 @@ sys.path.append(os.path.join(BASE_DIR, '../utils'))
 sample_num = 24576
 resolution = 128
 VIEWS = 200
+vox_factor = 0.25
 #BASE_OUT_DIR = '/home/rz1/Documents/Research/3dv2017_PBA_out/'
 BASE_OUT_DIR = './data_cache'
 # pcd_path = '/home/rz1/Documents/Research/3dv2017_PBA_out/PCDs/'
@@ -76,6 +80,14 @@ azim_all = np.linspace(0, 360, 9)
 azim_all = azim_all[0:-1]
 elev_all = np.linspace(-30, 30, 5)
 
+voxel_dir = '../voxels' 
+
+def read_bv(fn):
+    with open(fn, 'rb') as f:
+        model = binvox_rw.read_as_3d_array(f)
+    data = np.float32(model.data)
+    return data
+
 class lmdb_writer(DataFlow):
     def __init__(self, model_ids):
         self.model_ids = model_ids
@@ -83,7 +95,11 @@ class lmdb_writer(DataFlow):
     def get_data(self):
         for model_id in self.model_ids:
             #ply_name = pcd_path + '%s/%s_%d.ply'%(category_name, model_id, sample_num)
+            # default resolution: 128x128x128
+            vox_name = os.path.join(voxel_dir, '{}/{}/model.binvox'.format(category_name, model_id)) 
             mat_name = render_out_path + '/%s_tw.mat'%model_id
+            vox_model = read_bv(vox_name)
+            vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
             #try:
             #    #plydata = PlyData.read(ply_name)
             #    mat_struct = sio.loadmat(mat_name)
@@ -103,9 +119,19 @@ class lmdb_writer(DataFlow):
                     invZ_name = os.path.join(render_out_path, '{}/invZ_{}_{}.npy'.format(model_id, int(a), int(e)))
                     rgb_single, mask_single = read_png_to_uint8(image_name)
                     invZ_single = np.load(invZ_name)
-                    invZ_single = invZ_single[:, :, None]
+                    surfaceNormal_single = get_surface_from_depth(invZ_single)
+                    #print mask_single.shape
+                    #print mask_single.dtype
+                    if invZ_single.ndim == 2:
+                        invZ_single = invZ_single[:, :, None]
+                    if mask_single.ndim == 2:
+                        mask_single = mask_single[:, :, None]
+                    if mask_single.shape[2] == 3:
+                        mask_single = mask_single[:, :, 0]
+                        mask_single = mask_single[:, :, None]
 
-                    yield [rgb_single, invZ_single, mask_single, np.asarray([a, e, 0.], dtype=np.float32)]
+                    yield [rgb_single, invZ_single, mask_single, surfaceNormal_single, \
+                        np.asarray([a, e, 0.], dtype=np.float32), vox_model_zoom.astype(np.uint8)]
 
             #for view in range(VIEWS):
             #    image_name = render_out_path + '/%s/%d_0.png'%(model_id, view)
@@ -120,7 +146,16 @@ class lmdb_writer(DataFlow):
         return len(self.model_ids) * VIEWS
     
 def get_surface_from_depth(invZ):
-    pass
+    depth = np.reciprocal(invZ)
+    depth[depth == np.inf] = 4
+    dz_dy = np.gradient(depth, axis=0)
+    dz_dx = np.gradient(depth, axis=1)
+    
+    d = np.concatenate((-dz_dx[:, :, None], -dz_dy[:, :, None], np.ones_like(depth[:, :, None])), axis=-1)
+    l = np.linalg.norm(d, axis=-1)
+    n = np.divide(d, l[:, :, None]) 
+
+    return n
 
 def read_png_to_uint8(img_name):
     img = mpimg.imread(img_name)
@@ -135,6 +170,7 @@ def get_models(category_name, splits = ['train', 'test', 'val']):
     for split in splits:
         listFile = "./render_scripts/lists/PTNlist_v2/%s_%sids.txt"%(category_name, split)
         listFile = os.path.join("./render_scripts/lists/{}_debug.txt".format(category_name))
+        listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
         #print listFile
         #sys.exit()
         with open(listFile) as file:
@@ -316,6 +352,8 @@ if __name__ == "__main__":
     for category_name in categories:
         render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_debug_nonorm'%(category_name, \
             resolution))
+        render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
+            resolution))
         # render_out_path = '/newfoundland/rz1/res128_random_randLampbb8'
         for splits in splits_list:        
             if splits == ['train', 'test', 'val']:
@@ -335,6 +373,8 @@ if __name__ == "__main__":
             # write_path = '/data_tmp/lmdbqqqq'
             lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.lmdb"%(cat_name[category_name], sample_num, lmdb_name_append)
             lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.lmdb')
+            # depth,mask,surfnorm,campose,vox32
+            lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0212.lmdb'.format(lmdb_name_append)) 
 
             command = 'rm -rf %s'%lmdb_write
             print command
