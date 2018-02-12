@@ -156,25 +156,25 @@ class data_loader(object):
 
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.rgb_batch_train), \
-            lambda: tf.to_float(self.rgb_batch_test)), [-1, self.resolution, self.resolution, 3])
+            lambda: tf.to_float(self.rgb_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
         
         self.invZ_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.invZ_batch_train), \
-            lambda: tf.to_float(self.invZ_batch_test)), [-1, self.resolution, self.resolution, 1])
+            lambda: tf.to_float(self.invZ_batch_test)), [self.batch_size, self.resolution, self.resolution, 1])
         
         self.mask_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.mask_batch_train), \
-            lambda: tf.to_float(self.mask_batch_test)), [-1, self.resolution, self.resolution, 1])
+            lambda: tf.to_float(self.mask_batch_test)), [self.batch_size, self.resolution, self.resolution, 1])
 
         self.sn_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.sn_batch_train), \
-            lambda: tf.to_float(self.sn_batch_test)), [-1, self.resolution, self.resolution, 3])
+            lambda: tf.to_float(self.sn_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
         
         self.angles_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.angles_batch_train), \
-            lambda: tf.to_float(self.angles_batch_test)), [-1, 3])
+            lambda: tf.to_float(self.angles_batch_test)), [self.batch_size, 3])
 
         self.voxel_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.vox_batch_train), \
-            lambda: tf.to_float(self.vox_batch_test)), [-1, self.vox_reso, self.vox_reso, self.vox_reso])
+            lambda: tf.to_float(self.vox_batch_test)), [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso])
 
