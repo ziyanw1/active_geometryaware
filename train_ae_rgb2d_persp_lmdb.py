@@ -120,10 +120,14 @@ def train(ae):
 
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
+            
+            ops_to_run = [
+                ae.optimizer, ae.merge_train, ae.counter, ae.loss,
+                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss
+            ]
 
-            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = ae.sess.run([ae.optimizer, \
-                ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss], \
-                feed_dict=feed_dict)
+            stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
 
             log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
