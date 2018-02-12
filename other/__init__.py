@@ -11,4 +11,3 @@ import tfutil
 import utils
 import binvox_rw
 import voxel
-import aff_recv

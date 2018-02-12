@@ -60,7 +60,7 @@ class AE_rgb2d(object):
         print '='*10
         print self.data_loader.voxel_batch
         
-        self.vis = self.data_loader.voxel_batch
+        self.vis = {'voxel': self.data_loader.voxel_batch}
         #let's visualize voxels
         #exit()
         

@@ -25,7 +25,7 @@ sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 import tf_util
 
-from visualizers import Vis
+from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
 
 
@@ -115,7 +115,7 @@ def restore(ae):
 
 def train(ae):
 
-    v = Vis()
+    v = VisVox()
     
     i = 0 
     try:
@@ -146,7 +146,7 @@ def train(ae):
                 test(ae)
 
             if i%FLAGS.vis_every_step == 0:
-                v.process(vis, i)
+                v.process(vis, 'train', i)
             
             #if i > 1000:
             #    break
