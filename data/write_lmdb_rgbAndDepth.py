@@ -103,8 +103,9 @@ class lmdb_writer(DataFlow):
                     invZ_name = os.path.join(render_out_path, '{}/invZ_{}_{}.npy'.format(model_id, int(a), int(e)))
                     rgb_single, mask_single = read_png_to_uint8(image_name)
                     invZ_single = np.load(invZ_name)
-                    print mask_single.shape
-                    print mask_single.dtype
+                    surfaceNormal_single = get_surface_from_depth(invZ_single)
+                    #print mask_single.shape
+                    #print mask_single.dtype
                     if invZ_single.ndim == 2:
                         invZ_single = invZ_single[:, :, None]
                     if mask_single.ndim == 2:
@@ -113,7 +114,7 @@ class lmdb_writer(DataFlow):
                         mask_single = mask_single[:, :, 0]
                         mask_single = mask_single[:, :, None]
 
-                    yield [rgb_single, invZ_single, mask_single, np.asarray([a, e, 0.], dtype=np.float32)]
+                    yield [rgb_single, invZ_single, mask_single, surfaceNormal_single, np.asarray([a, e, 0.], dtype=np.float32)]
 
             #for view in range(VIEWS):
             #    image_name = render_out_path + '/%s/%d_0.png'%(model_id, view)
@@ -128,7 +129,16 @@ class lmdb_writer(DataFlow):
         return len(self.model_ids) * VIEWS
     
 def get_surface_from_depth(invZ):
-    pass
+    depth = np.reciprocal(invZ)
+    depth[depth == np.inf] = 4
+    dz_dy = np.gradient(depth, axis=0)
+    dz_dx = np.gradient(depth, axis=1)
+    
+    d = np.concatenate((-dz_dx[:, :, None], -dz_dy[:, :, None], np.ones_like(depth[:, :, None])), axis=-1)
+    l = np.linalg.norm(d, axis=-1)
+    n = np.divide(d, l[:, :, None]) 
+
+    return n
 
 def read_png_to_uint8(img_name):
     img = mpimg.imread(img_name)
