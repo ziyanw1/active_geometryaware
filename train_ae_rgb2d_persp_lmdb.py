@@ -75,7 +75,7 @@ flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
 flags.DEFINE_integer("save_every_step", 1000, "save every ? step")
 flags.DEFINE_boolean("if_test", True, "if test")
-flags.DEFINE_integer("test_every_step", 20, "test every ? step")
+flags.DEFINE_integer("test_every_step", 1000, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
 flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
 flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
@@ -144,12 +144,16 @@ def train(ae):
                 toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
 
             i += 1
+            ae.train_writer.add_summary(summary, i)
+            ae.train_writer.flush()
 
             if i%FLAGS.save_every_step == 0:
                 save(ae, i, i, i)
 
             if i%FLAGS.test_every_step == 0:
-                test(ae)
+                test_losses = test(ae)  
+                for key, value in test_losses.iteritems():
+                    tf_util.save_scalar(i, 'test/'+key, value, ae.train_writer)
 
             #if i%FLAGS.vis_every_step == 0:
             #    v.process(vis, 'train', i)
@@ -166,7 +170,64 @@ def train(ae):
 
 
 def test(ae):
-    pass
+    
+    test_idx = 0
+    log_string(tf_util.toGreen('=============Testing============='))
+    loss = []
+    depth_losses = []
+    sn_losses = []
+    mask_losses = []
+
+    try:
+        while not ae.coord.should_stop():
+            #ae.sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
+
+            tic = time.time()
+            feed_dict = {ae.is_training: False, ae.data_loader.is_training: False}
+
+            ops_to_run = [
+                ae.opt_step, ae.merge_train, ae.counter, ae.loss_tensor,
+                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss]
+
+            stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
+            toc = time.time()
+
+            depth_losses.append(depth_recon_loss)
+            sn_losses.append(sn_recon_loss)
+            mask_losses.append(mask_cls_loss)
+
+            #log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
+            #    toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+
+            test_idx += 1
+
+            if test_idx > 1500 / FLAGS.batch_size:
+                log_string(tf_util.toGreen('===========Done testing==========='))
+                toc = time.time()
+                mean_depth_loss = np.mean(np.asarray(depth_losses))
+                mean_sn_loss = np.mean(np.asarray(sn_losses))
+                mean_mask_loss = np.mean(np.asarray(mask_losses))
+                log_string(tf_util.toRed('Test time {}s, depth recon loss: {}, sn recon loss: {}, mask cls loss:{}.'.format(\
+                    toc-tic, mean_depth_loss, mean_sn_loss, mean_mask_loss)))
+
+                losses = {'loss_depth_recon': mean_depth_loss,\
+                    'loss_sn_recon': mean_sn_loss,\
+                    'loss_mask_cls': mean_mask_loss}
+
+                return losses
+                
+
+            #if i%FLAGS.vis_every_step == 0:
+            #    v.process(vis, 'train', i)
+            
+            #if i > 1000:
+            #    break
+    except tf.errors.OutOfRangeError:
+        print('Done testing')
+    finally:
+        pass
+        #ae.coord.request_stop()
 
 
 #def get_degree_error(tws0, tws1):
