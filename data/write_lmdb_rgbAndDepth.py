@@ -39,7 +39,6 @@ import binvox_rw
 
 sample_num = 24576
 resolution = 128
-VIEWS = 200
 vox_factor = 0.25
 #BASE_OUT_DIR = '/home/rz1/Documents/Research/3dv2017_PBA_out/'
 BASE_OUT_DIR = './data_cache'
@@ -79,6 +78,7 @@ cat_name = {
 azim_all = np.linspace(0, 360, 9)
 azim_all = azim_all[0:-1]
 elev_all = np.linspace(-30, 30, 5)
+VIEWS = len(azim_all)*len(elev_all)
 
 voxel_dir = '../voxels' 
 
@@ -170,7 +170,7 @@ def get_models(category_name, splits = ['train', 'test', 'val']):
     for split in splits:
         listFile = "./render_scripts/lists/PTNlist_v2/%s_%sids.txt"%(category_name, split)
         listFile = os.path.join("./render_scripts/lists/{}_debug.txt".format(category_name))
-        listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
+        #listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
         #print listFile
         #sys.exit()
         with open(listFile) as file:
@@ -352,8 +352,8 @@ if __name__ == "__main__":
     for category_name in categories:
         render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_debug_nonorm'%(category_name, \
             resolution))
-        render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
-            resolution))
+        #render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
+        #    resolution))
         # render_out_path = '/newfoundland/rz1/res128_random_randLampbb8'
         for splits in splits_list:        
             if splits == ['train', 'test', 'val']:
@@ -374,7 +374,7 @@ if __name__ == "__main__":
             lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.lmdb"%(cat_name[category_name], sample_num, lmdb_name_append)
             lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.lmdb')
             # depth,mask,surfnorm,campose,vox32
-            lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0212.lmdb'.format(lmdb_name_append)) 
+            #lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0212.lmdb'.format(lmdb_name_append)) 
 
             command = 'rm -rf %s'%lmdb_write
             print command
