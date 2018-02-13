@@ -73,16 +73,18 @@ class AE_rgb2d(object):
             'pred_voxel': self.pred_voxels,
             'rgb': self.rgb_batch,
             'depth': self.depth_batch,
-            'mask': self.mask_batch
+            'mask': self.mask_batch,
+            'gt_voxel2depth': self.gt_voxel2depth,
+            'gt_voxel2mask': self.gt_voxel2mask, 
         }
 
     def _voxel_pred(self):
 
         self.voxel_batch = tf.expand_dims(self.data_loader.voxel_batch, axis = 4)
-        self.depth_batch = 1.0/self.invZ_batch
+        self.depth_batch = 2.0/self.invZ_batch #scale by x2 to make the depths ~4
         
         #using gt inputs for now...
-        in_depth = self.depth_batch*2
+        in_depth = self.depth_batch
         in_mask = self.mask_batch
 
         in_depth -= 4.0 #subtract the baseline
@@ -114,7 +116,7 @@ class AE_rgb2d(object):
         self.pred_voxels = pred_outputs
 
         self.angles = self.data_loader.angles_batch
-        self.theta = self.angles[:,0]
+        self.theta = -self.angles[:,0] #remember that we're flipping theta!
         self.phi = self.angles[:,1]
 
         print self.theta
@@ -141,7 +143,9 @@ class AE_rgb2d(object):
             #replace bg with grey
             hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
             pred_depth *= hard_mask
-            pred_depth += 4.0 * (1.0 - hard_mask)
+
+            BG_DEPTH = 3.0
+            pred_depth += BG_DEPTH * (1.0 - hard_mask)
 
             pred_depth = tf.image.resize_images(pred_depth, (H, W))
             pred_mask = tf.image.resize_images(pred_mask, (H, W))
