@@ -50,6 +50,8 @@ flags.DEFINE_string('ae_file', '', '')
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
 flags.DEFINE_integer('voxel_resolution', 32, '')
+flags.DEFINE_string('opt_step_name', 'opt_2d_step', '')
+flags.DEFINE_string('loss_name', 'sketch_loss', '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
@@ -118,6 +120,9 @@ def restore(ae):
 def train(ae):
 
     v = VisVox()
+
+    opt_step = getattr(ae, FLAGS.opt_step_name)
+    loss = getattr(ae, FLAGS.loss_name)
     
     i = 0 
     try:
@@ -126,9 +131,9 @@ def train(ae):
 
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
-            
+
             ops_to_run = [
-                ae.optimizer, ae.merge_train, ae.counter, ae.loss,
+                opt_step, ae.merge_train, ae.counter, loss,
                 ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss,
                 ae.vis
             ]

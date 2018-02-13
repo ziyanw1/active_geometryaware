@@ -39,11 +39,12 @@ class AE_rgb2d(object):
         
         self._create_network()
         self._create_loss()
-        self._create_optimizer()
-        self._create_summary()
         
         self._voxel_pred()
         self._visualize()
+
+        self._create_optimizer()
+        self._create_summary()
         
         # create a sess
         config = tf.ConfigProto()
@@ -126,6 +127,7 @@ class AE_rgb2d(object):
 
         gt_voxel = other.voxel.transformer_preprocess(self.voxel_batch)
         gt_voxel = other.voxel.rotate_voxel(gt_voxel, world2cam_rot_mat)
+        self.gt_voxel = gt_voxel
 
         print gt_voxel
 
@@ -155,12 +157,19 @@ class AE_rgb2d(object):
 
         self.gt_voxel2depth = gt_depth
         self.gt_voxel2mask = gt_mask
+
+        #take losses
+        other.constants.eps = 1E-6
+        self.voxel_loss = other.losses.binary_ce_loss(self.pred_voxels, self.gt_voxel)
         
     def _voxel_net(self, pred_inputs):
         if other.constants.DEBUG_UNPROJECT:
             return pred_inputs
         else:
-            return other.nets.voxel_net_3d(pred_inputs)
+            with tf.variable_scope('voxel_net'):
+                out = other.nets.voxel_net_3d(pred_inputs)
+                self.voxel_net_3d_vars = other.tfutil.current_scope_and_vars()[1]
+            return out
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
@@ -334,8 +343,7 @@ class AE_rgb2d(object):
         self.mask_cls_loss = tf.reduce_mean(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=self.mask_batch, \
             logits=self.mask_pred), [1,2,3]), 0, name='mask_cls_loss')
 
-        self.loss = self.depth_recon_loss + self.sn_recon_loss + self.mask_cls_loss
-
+        self.sketch_loss = self.depth_recon_loss + self.sn_recon_loss + self.mask_cls_loss
 
     def _create_optimizer(self):
         
@@ -350,13 +358,20 @@ class AE_rgb2d(object):
             self.optimizer = tf.train.MomentumOptimizer(self.learning_rate, momentum=self.FLAGS.momentum)
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
-        self.optimizer = self.optimizer.minimize(self.loss, var_list=unet_vars, global_step=self.counter)
+            
+        self.opt_2d_step = self.optimizer.minimize(
+            self.sketch_loss, var_list=unet_vars, global_step=self.counter
+        )
+        
+        self.opt_3d_step = self.optimizer.minimize(
+            self.voxel_loss, var_list=self.voxel_net_3d_vars, global_step=self.counter
+        )
 
     def _create_summary(self):
 
         self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
-        self.summary_loss_train = tf.summary.scalar('train/loss', self.loss)
-        self.summary_loss_test = tf.summary.scalar('test/loss', self.loss)
+        self.summary_loss_train = tf.summary.scalar('train/loss', self.sketch_loss)
+        self.summary_loss_test = tf.summary.scalar('test/loss', self.sketch_loss)
 
         self.summary_loss_depth_recon_train = tf.summary.scalar('train/loss_depth_recon', self.depth_recon_loss)
         self.summary_loss_depth_recon_test = tf.summary.scalar('test/loss_depth_recon', self.depth_recon_loss)
