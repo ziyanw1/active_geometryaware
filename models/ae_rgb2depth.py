@@ -98,15 +98,27 @@ class AE_rgb2d(object):
         other.constants.focal_length = focal_length
         other.constants.BS = self.FLAGS.batch_size
 
-        other.constants.DEBUG_UNPROJECT = True
+        other.constants.DEBUG_UNPROJECT = False
         other.constants.USE_LOCAL_BIAS = False
+        other.constants.USE_OUTLINE = True
         
         pred_inputs = other.nets.unproject(pred_inputs)
+
+        other.constants.mode = 'train'
+        other.constants.rpvx_unsup = False
+        other.constants.force_batchnorm_trainmode = False
+        other.constants.force_batchnorm_testmode = False
+        other.constants.NET3DARCH = 'marr'
+        
         pred_outputs = self._voxel_net(pred_inputs)
+
         self.pred_voxels = pred_outputs
 
     def _voxel_net(self, pred_inputs):
-        return pred_inputs
+        if other.constants.DEBUG_UNPROJECT:
+            return pred_inputs
+        else:
+            return other.nets.voxel_net_3d(pred_inputs)
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
