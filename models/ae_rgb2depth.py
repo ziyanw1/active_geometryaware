@@ -35,13 +35,12 @@ class AE_rgb2d(object):
 
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
-
-        self._test()
         
         self._create_network()
         self._create_loss()
         self._create_optimizer()
         self._create_summary()
+        self._test_voxel()        
         # create a sess
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -56,10 +55,14 @@ class AE_rgb2d(object):
         # create summary
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
-    def _test(self):
+    def _test_voxel(self):
         print '='*10
         print self.data_loader.voxel_batch
-        
+
+        print self.rgb_batch
+        print self.invZ_batch
+        print self.mask_batch
+                
         self.vis = {'voxel': self.data_loader.voxel_batch}
         #let's visualize voxels
         #exit()

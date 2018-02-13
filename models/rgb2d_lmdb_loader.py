@@ -96,7 +96,10 @@ class data_loader(object):
         # data_lmdb_path = "/home/rz1/Documents/Research/3dv2017_PBA/data/lmdb"
         # data_lmdb_path = "/data_tmp/lmdb/"
         # data_lmdb_path = "/newfoundland/rz1/lmdb/"
-        data_lmdb_path = "./data/lmdb/"
+        #data_lmdb_path = "./data/lmdb/"
+
+        data_lmdb_path = flags.data_path
+        
         # data_lmdb_path = "/home/ziyan/3dv2017_PBA_out/data/lmdb/"
         # self.data_pcd_train = data_lmdb_path + "randLampbb8Full_%s_%d_train_imageAndShape.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = data_lmdb_path + "random_randomLamp0822_%s_%d_train_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)

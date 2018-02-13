@@ -220,12 +220,27 @@ def transformer(voxels,
                                          (z - z0_f) * x0_valid * y0_valid * z0_valid),
                                         1)
 
+            weights_summed = (
+                w_z0_y0_x0 +
+                w_z0_y0_x1 +
+                w_z0_y1_x0 +
+                w_z0_y1_x1 +
+                w_z1_y0_x0 +
+                w_z1_y0_x1 +
+                w_z1_y1_x0 +
+                w_z1_y1_x1
+            )
+
             output = tf.add_n([
                 w_z0_y0_x0 * i_z0_y0_x0, w_z0_y0_x1 * i_z0_y0_x1,
                 w_z0_y1_x0 * i_z0_y1_x0, w_z0_y1_x1 * i_z0_y1_x1,
                 w_z1_y0_x0 * i_z1_y0_x0, w_z1_y0_x1 * i_z1_y0_x1,
                 w_z1_y1_x0 * i_z1_y1_x0, w_z1_y1_x1 * i_z1_y1_x1
             ])
+
+            #with tf.control_dependencies([tfpy.summarize_tensor(weights_summed, 'weights')]):
+            #    output = output + 0.0
+            
             return output
 
     def _meshgrid(depth, height, width, z_near, z_far):
@@ -389,8 +404,7 @@ def transformer(voxels,
             return output
 
     with tf.variable_scope(name):
-        with tf.device('/gpu:0'):
-            output = _transform(theta, voxels, out_size, z_near, z_far)
+        output = _transform(theta, voxels, out_size, z_near, z_far)
         return output
 
 def get_transform_matrix_tf(theta, phi, invert_rot = False, invert_focal = False):
@@ -534,14 +548,13 @@ def rotate_and_project_voxel(voxel, rotmat):
 
     voxel = transformer_preprocess(voxel)
         
-    with tf.device('/gpu:0'):
-        out = transformer(
-            voxel,
-            tf.reshape(rotmat, (const.BS, 16)),
-            (const.S, const.S, const.S),
-            3.0,
-            5.0,
-        )
+    out = transformer(
+        voxel,
+        tf.reshape(rotmat, (const.BS, 16)),
+        (const.S, const.S, const.S),
+        3.0,
+        5.0,
+    )
 
     out = transformer_postprocess(out)
         
@@ -551,29 +564,27 @@ def rotate_and_project_voxel(voxel, rotmat):
     return out
 
 def rotate_voxel(voxel, rotmat):
-    with tf.device('/gpu:0'):
-        return transformer(
-            voxel,
-            tf.reshape(rotmat, (const.BS, 16)),
-            (const.S, const.S, const.S),
-            3.0,
-            5.0,
-            do_project = False,
-        )
+    return transformer(
+        voxel,
+        tf.reshape(rotmat, (const.BS, 16)),
+        (const.S, const.S, const.S),
+        3.0,
+        5.0,
+        do_project = False,
+    )
 
 def project_voxel(voxel):
-    with tf.device('/gpu:0'):    
-        rotmat = tf.constant(get_transform_matrix(0.0, 0.0), dtype = tf.float32)
-        rotmat = tf.reshape(rotmat, (1, 4, 4))
-        rotmat = tf.tile(rotmat, (const.BS, 1, 1))
-        return transformer(
-            voxel,
-            tf.reshape(rotmat, (const.BS, 16)),
-            (const.S, const.S, const.S),
-            3.0,
-            5.0,
-            do_project = True,
-        )
+    rotmat = tf.constant(get_transform_matrix(0.0, 0.0), dtype = tf.float32)
+    rotmat = tf.reshape(rotmat, (1, 4, 4))
+    rotmat = tf.tile(rotmat, (const.BS, 1, 1))
+    return transformer(
+        voxel,
+        tf.reshape(rotmat, (const.BS, 16)),
+        (const.S, const.S, const.S),
+        3.0,
+        5.0,
+        do_project = True,
+    )
 
 def unproject_voxel(voxel):
     #need to rewrite this
@@ -634,12 +645,14 @@ def transformer_preprocess(voxel):
     return tf.reverse(voxel, axis=[1]) #z axis
 
 def transformer_postprocess(voxel):
-    with tf.device('/gpu:0'):
-        voxel = tfutil.norm01(voxel)
-        voxel = tf.reverse(voxel, axis=[2, 3])
-        #zxy -> xyz i think
-        voxel = tf.transpose(voxel, (0, 2, 3, 1, 4))
-        return voxel
+    #voxel = tfutil.norm01(voxel) #am i stupid!?
+    #so, since the bilinear sampling screws up the precision, this adjustment is necessary:
+    delta = 1E-4
+    voxel = voxel * (1.0-delta) + delta/2.0
+    voxel = tf.reverse(voxel, axis=[2, 3])
+    #zxy -> xyz i think
+    voxel = tf.transpose(voxel, (0, 2, 3, 1, 4))
+    return voxel
 
 def voxel2mask_aligned(voxel):
     return tf.reduce_max(voxel, axis=3)

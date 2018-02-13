@@ -174,7 +174,12 @@ def encoder_multidecoder(inputs, pred_dims, blocks, base_channels=16,
 
 
 def voxel_net(inputs, aux = None, bn = True, outsize = 128, built_in_transform = False):
-    bn_trainmode = ((const.mode != 'test') and (not const.rpvx_unsup)) or const.force_batchnorm_trainmode
+    bn_trainmode = ((const.mode != 'test') and (not const.rpvx_unsup))
+    if const.force_batchnorm_trainmode:
+        bn_trainmode = True
+    if const.force_batchnorm_testmode:
+        bn_trainmode = False
+        
     normalizer_params={'is_training': bn_trainmode, 
                        'decay': 0.9,
                        'epsilon': 1e-5,
@@ -332,7 +337,12 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
     ###########################
 
     #aux is used for the category input
-    bn_trainmode = ((const.mode != 'test') and (not const.rpvx_unsup)) or const.force_batchnorm_trainmode
+    bn_trainmode = ((const.mode != 'test') and (not const.rpvx_unsup))
+    if const.force_batchnorm_trainmode:
+        bn_trainmode = True
+    if const.force_batchnorm_testmode:
+        bn_trainmode = False
+
     normalizer_params={'is_training': bn_trainmode, 
                        'decay': 0.9,
                        'epsilon': 1e-5,
