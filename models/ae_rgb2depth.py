@@ -40,9 +40,6 @@ class AE_rgb2d(object):
         self._create_network()
         self._create_loss()
         
-        self._voxel_pred()
-        self._visualize()
-
         self._create_optimizer()
         self._create_summary()
         
@@ -368,13 +365,10 @@ class AE_rgb2d(object):
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
             
-        self.opt_2d_step = self.optimizer.minimize(
+        self.opt_step = self.optimizer.minimize(
             self.sketch_loss, var_list=unet_vars, global_step=self.counter
         )
         
-        self.opt_3d_step = self.optimizer.minimize(
-            self.voxel_loss, var_list=self.voxel_net_3d_vars, global_step=self.counter
-        )
 
     def _create_summary(self):
 

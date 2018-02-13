@@ -25,7 +25,7 @@ sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 import tf_util
 
-from visualizers import VisVox
+#from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
 
 
@@ -50,7 +50,7 @@ flags.DEFINE_string('ae_file', '', '')
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
 flags.DEFINE_integer('voxel_resolution', 32, '')
-flags.DEFINE_string('opt_step_name', 'opt_2d_step', '')
+flags.DEFINE_string('opt_step_name', 'opt_step', '')
 flags.DEFINE_string('loss_name', 'sketch_loss', '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
@@ -119,7 +119,7 @@ def restore(ae):
 
 def train(ae):
 
-    v = VisVox()
+    #v = VisVox()
 
     ae.opt_step = getattr(ae, FLAGS.opt_step_name)
     ae.loss_tensor = getattr(ae, FLAGS.loss_name)
@@ -134,15 +134,14 @@ def train(ae):
 
             ops_to_run = [
                 ae.opt_step, ae.merge_train, ae.counter, ae.loss_tensor,
-                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss,
-                ae.vis
-            ]
+                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss]
 
             stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
-            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss, vis = stuff
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
+            toc = time.time()
 
-            log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
-                loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+            log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
+                toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
 
             i += 1
 
@@ -152,8 +151,8 @@ def train(ae):
             if i%FLAGS.test_every_step == 0:
                 test(ae)
 
-            if i%FLAGS.vis_every_step == 0:
-                v.process(vis, 'train', i)
+            #if i%FLAGS.vis_every_step == 0:
+            #    v.process(vis, 'train', i)
             
             #if i > 1000:
             #    break

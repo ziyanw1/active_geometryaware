@@ -226,14 +226,11 @@ if __name__ == "__main__":
     for category_name in categories:
         render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_debug_nonorm'%(category_name, \
             resolution))
-<<<<<<< HEAD
         #render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
         #    resolution))
-=======
         render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
             resolution))
 
->>>>>>> 156bb150292404aca8aa54b0394dec017b246924
         # render_out_path = '/newfoundland/rz1/res128_random_randLampbb8'
         for splits in splits_list:        
             if splits == ['train', 'test', 'val']:

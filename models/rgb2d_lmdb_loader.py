@@ -115,7 +115,7 @@ class data_loader(object):
         # self.data_pcd_test = '/newfoundland/rz1/lmdb/badRenderbb9_car_24576_test_imageAndShape.lmdb'
         
         buffer_size = 32
-        parall_num = 1
+        parall_num = 16
         self.batch_size = FLAGS.batch_size # models used in a batch
 
         self.ds_train = LMDBData(self.data_ae_train, shuffle=True) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
@@ -124,14 +124,8 @@ class data_loader(object):
         self.ds_train = PrefetchData(self.ds_train, buffer_size, parall_num)
         self.ds_train = LMDBDataPoint(self.ds_train)
         self.ds_train = PrefetchDataZMQ(self.ds_train, parall_num)
-<<<<<<< HEAD
         self.ds_train = BatchData(self.ds_train, self.batch_size, remainder=False, use_list=True) # no smaller tail batch
         self.ds_train = RepeatedData(self.ds_train, -1)  # -1 for repeat infinite times
-=======
-
-        self.ds_train = BatchData(self.ds_train, self.batch_size, use_list=True)
-        self.ds_train = RepeatedData(self.ds_train, -1)
->>>>>>> 156bb150292404aca8aa54b0394dec017b246924
         # TestDataSpeed(self.ds_train).start_test() # 164.15it/s
         self.ds_train.reset_state()
 
@@ -143,8 +137,8 @@ class data_loader(object):
         self.ds_test = LMDBDataPoint(self.ds_test)
         self.ds_test = PrefetchDataZMQ(ds=self.ds_test, nr_proc=parall_num)
         # all dataset will be iterated
-        self.ds_test = BatchData(self.ds_test, 1, remainder=True, use_list=True)
-        #self.ds_test = RepeatedData(self.ds_test, 0)
+        self.ds_test = BatchData(self.ds_test, self.batch_size, remainder=False, use_list=True)
+        self.ds_test = RepeatedData(self.ds_test, -1)
         # TestDataSpeed(self.ds_test).start_test()
         self.ds_test.reset_state()
 
@@ -157,28 +151,28 @@ class data_loader(object):
                 [self.batch_size, self.resolution, self.resolution, 3],\
                 [self.batch_size, 3], [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=1, queue_capacity=100)
 
-        #self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.sn_batch_test,\
-        #    self.angles_batch_test, self.vox_batch_test = read_batch_generator\
-        #    (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32,
-        #        tf.uint8], \
-        #        shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
-        #        self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
-        #        [self.batch_size, self.resolution, self.resolution, 3],\
-        #        [self.batch_size, 3], [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=1, queue_capacity=100)
-
         self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.sn_batch_test,\
             self.angles_batch_test, self.vox_batch_test = read_batch_generator\
             (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32,
                 tf.uint8], \
-                shapes=[[1, self.resolution, self.resolution, 3], [1, self.resolution, \
-                self.resolution, 1], [1, self.resolution, self.resolution, 1], \
-                [1, self.resolution, self.resolution, 3],\
-                [1, 3], [1, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=self.batch_size, queue_capacity=100)
+                shapes=[[self.batch_size, self.resolution, self.resolution, 3], [self.batch_size, self.resolution, \
+                self.resolution, 1], [self.batch_size, self.resolution, self.resolution, 1], \
+                [self.batch_size, self.resolution, self.resolution, 3],\
+                [self.batch_size, 3], [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=1, queue_capacity=100)
+
+        #self.rgb_batch_test, self.invZ_batch_test, self.mask_batch_test, self.sn_batch_test,\
+        #    self.angles_batch_test, self.vox_batch_test = read_batch_generator\
+        #    (generator=self.ds_test.get_data(), dtypes=[tf.uint8, tf.float32, tf.float32, tf.float32, tf.float32,
+        #        tf.uint8], \
+        #        shapes=[[1, self.resolution, self.resolution, 3], [1, self.resolution, \
+        #        self.resolution, 1], [1, self.resolution, self.resolution, 1], \
+        #        [1, self.resolution, self.resolution, 3],\
+        #        [1, 3], [1, self.vox_reso, self.vox_reso, self.vox_reso]], batch_size=self.batch_size, queue_capacity=100)
 
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.rgb_batch_train), \
             lambda: tf.to_float(self.rgb_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
-        self.rgb_batch /= 255.0 #normalize to [0, 1]
+        ## normalization happens in autoencoder
         
         self.invZ_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.invZ_batch_train), \
