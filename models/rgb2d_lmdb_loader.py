@@ -99,15 +99,16 @@ class data_loader(object):
         #data_lmdb_path = "./data/lmdb/"
 
         data_lmdb_path = flags.data_path
+        data_lmdb_file = flags.data_file
         
         # data_lmdb_path = "/home/ziyan/3dv2017_PBA_out/data/lmdb/"
         # self.data_pcd_train = data_lmdb_path + "randLampbb8Full_%s_%d_train_imageAndShape.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = data_lmdb_path + "random_randomLamp0822_%s_%d_train_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_train = os.path.join(data_lmdb_path, "rgb2depth_single_0209.lmdb")
+        self.data_ae_train = os.path.join(data_lmdb_path, data_lmdb_file)
         #self.data_pcd_train = data_lmdb_path + "random_randLamp1005_%s_%d_train_imageAndShape_single_persp.amdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = '/data_tmp/lmdb/badRenderbb9_car_24576_train_imageAndShape.lmdb'
         # self.data_pcd_test = data_lmdb_path + "random_randomLamp0822_%s_%d_test_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_test = os.path.join(data_lmdb_path, "rgb2depth_single_0209.lmdb")
+        self.data_ae_test = os.path.join(data_lmdb_path, data_lmdb_file)
         #self.data_pcd_test = data_lmdb_path + "random_randLamp1005_%s_%d_test_imageAndShape_single_persp.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_test = '/newfoundland/rz1/lmdb/badRenderbb9_car_24576_test_imageAndShape.lmdb'
         
@@ -121,6 +122,7 @@ class data_loader(object):
         self.ds_train = PrefetchData(self.ds_train, buffer_size, parall_num)
         self.ds_train = LMDBDataPoint(self.ds_train)
         self.ds_train = PrefetchDataZMQ(self.ds_train, parall_num)
+
         self.ds_train = BatchData(self.ds_train, self.batch_size, use_list=True)
         self.ds_train = RepeatedData(self.ds_train, -1)
         # TestDataSpeed(self.ds_train).start_test() # 164.15it/s

@@ -43,7 +43,9 @@ sample_num = 24576
 #resolution=32
 resolution = 128
 VIEWS = 200
-vox_factor = 0.25
+
+vox_factor = 1.0
+#vox_factor = 0.25
 
 #BASE_OUT_DIR = '/home/rz1/Documents/Research/3dv2017_PBA_out/'
 BASE_OUT_DIR = './data_cache'
@@ -101,7 +103,10 @@ class lmdb_writer(DataFlow):
         self.model_ids = model_ids
 
     def get_data(self):
-        for model_id in self.model_ids:
+        for i, model_id in enumerate(self.model_ids):
+            
+            if i > 10:
+                break
 
             try:
                 assert os.path.exists(os.path.join(render_out_path,model_id))
@@ -116,6 +121,7 @@ class lmdb_writer(DataFlow):
             mat_name = render_out_path + '/%s_tw.mat'%model_id
             vox_model = read_bv(vox_name)
             vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
+
             #try:
             #    #plydata = PlyData.read(ply_name)
             #    mat_struct = sio.loadmat(mat_name)
@@ -251,3 +257,4 @@ if __name__ == "__main__":
             ds0 = lmdb_writer(model_ids)
             # ds1 = PrefetchDataZMQ(ds0, nr_proc=1)
             dftools.dump_dataflow_to_lmdb(ds0, lmdb_write)
+
