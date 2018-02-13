@@ -87,7 +87,8 @@ class AE_rgb2d(object):
 
         in_depth -= 4.0 #subtract the baseline
 
-        pred_inputs = tf.concat([in_depth, in_mask], axis = 3)
+        #mask **must** come before depth
+        pred_inputs = tf.concat([in_mask, in_depth], axis = 3)
 
         #setting up some constants
         other.constants.S = self.FLAGS.voxel_resolution
