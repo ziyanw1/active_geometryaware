@@ -1,6 +1,9 @@
+#!/usr/bin/env python2
+
 # scp jerrypiglet@128.237.129.33:Bitsync/3dv2017_PBA/train_ae_2_reg_lmdb.py . && scp -r jerrypiglet@128.237.129.33:Bitsync/3dv2017_PBA/models . && CUDA_VISIBLE_DEVICES=2,3 vglrun python train_ae_2_reg_lmdb.py --task_name REG_final_FASTconstantLr_bnNObn_NOtrans_car24576_bb10__bb9 --num_point=24576 --if_constantLr=True --if_deconv=True --if_transform=False --if_en_bn=True --if_gen_bn=False --cat_name='car' --batch_size=20 --learning_rate=1e-5 --ae_file '/newfoundland/rz1/log/finalAE_1e-5_bnNObn_car24576__bb10/'
 # CUDA_VISIBLE_DEVICES=0,1 vglrun python train_ae_2_reg_lmdb.py --task_name REG_final_FASTconstantLr_bnNObn_NOtrans_car24576_bb10_randLampbb8__bb9 --num_point=24576 --if_constantLr=True --if_deconv=True --if_transform=False --if_en_bn=True --if_gen_bn=False --cat_name='car' --batch_size=20 --learning_rate=1e-5 --ae_file '/newfoundland/rz1/log/finalAE_1e-5_bnNObn_car24576__bb10/'
 # scp jerrypiglet@128.237.133.169:Bitsync/3dv2017_PBA/train_ae_2_reg_lmdb.py . && scp -r jerrypiglet@128.237.133.169:Bitsync/3dv2017_PBA/models . && vglrun python train_ae_2_reg_lmdb.py --task_name REG_finalAE_FASTconstantLr_bnNObn_NOtrans_car24576_bb10__bb8_0707 --num_point=24576 --if_constantLr=True --if_deconv=True --if_transform=False --if_en_bn=True --if_gen_bn=False --cat_name='car' --batch_size=20 --learning_rate=1e-5 --ae_file '/newfoundland/rz1/log/finalAE_FASTconstantLr_bnNObn_NOtrans_car24576__bb10'
+
 import argparse
 import math
 import h5py
@@ -22,6 +25,7 @@ sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 import tf_util
 
+from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
 
 
@@ -35,6 +39,8 @@ flags.DEFINE_string('model_file', 'pcd_ae_1_lmdb', 'Model name')
 flags.DEFINE_string('cat_name', 'airplane', 'Category name')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
 flags.DEFINE_string('LOG_DIR', './log/summary', 'Log dir [default: log]')
+flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
+flags.DEFINE_string('data_file', 'rgb2depth_single_0209.lmdb', 'data file')
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
 flags.DEFINE_string('CHECKPOINT_DIR', './log', 'Log dir [default: log]')
 flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [default: tmp]')
@@ -44,6 +50,8 @@ flags.DEFINE_string('ae_file', '', '')
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
 flags.DEFINE_integer('voxel_resolution', 32, '')
+flags.DEFINE_string('opt_step_name', 'opt_2d_step', '')
+flags.DEFINE_string('loss_name', 'sketch_loss', '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
 flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
@@ -62,6 +70,7 @@ flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
 flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator")
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 # log and drawing (blue)
+flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
 flags.DEFINE_integer("save_every_step", 1000, "save every ? step")
@@ -69,6 +78,7 @@ flags.DEFINE_boolean("if_test", True, "if test")
 flags.DEFINE_integer("test_every_step", 20, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
 flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
+flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
 flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
 FLAGS = flags.FLAGS
@@ -108,6 +118,11 @@ def restore(ae):
     pass
 
 def train(ae):
+
+    v = VisVox()
+
+    ae.opt_step = getattr(ae, FLAGS.opt_step_name)
+    ae.loss_tensor = getattr(ae, FLAGS.loss_name)
     
     i = 0 
     try:
@@ -117,9 +132,14 @@ def train(ae):
             tic = time.time()
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
-            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = ae.sess.run([ae.optimizer, \
-                ae.merge_train, ae.counter, ae.loss, ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss], \
-                feed_dict=feed_dict)
+            ops_to_run = [
+                ae.opt_step, ae.merge_train, ae.counter, ae.loss_tensor,
+                ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss,
+                ae.vis
+            ]
+
+            stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
+            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss, vis = stuff
 
             log_string('Iteration: {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
@@ -132,6 +152,9 @@ def train(ae):
             if i%FLAGS.test_every_step == 0:
                 test(ae)
 
+            if i%FLAGS.vis_every_step == 0:
+                v.process(vis, 'train', i)
+            
             #if i > 1000:
             #    break
     except tf.errors.OutOfRangeError:
@@ -170,8 +193,14 @@ if __name__ == "__main__":
     else:
         # os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
         if not(FLAGS.restore):
-            delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
-            if delete_key == 'y' or delete_key == "":
+            
+            def check_delete():
+                if FLAGS.force_delete:
+                    return True
+                delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
+                return delete_key == 'y' or delete_key == ''
+            
+            if check_delete():
                 os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
                 os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
                 print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR+FLAGS.CHECKPOINT_DIR)

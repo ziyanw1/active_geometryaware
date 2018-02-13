@@ -98,15 +98,19 @@ class data_loader(object):
         # data_lmdb_path = "/home/rz1/Documents/Research/3dv2017_PBA/data/lmdb"
         # data_lmdb_path = "/data_tmp/lmdb/"
         # data_lmdb_path = "/newfoundland/rz1/lmdb/"
-        data_lmdb_path = "./data/lmdb/"
+        #data_lmdb_path = "./data/lmdb/"
+
+        data_lmdb_path = flags.data_path
+        data_lmdb_file = flags.data_file
+        
         # data_lmdb_path = "/home/ziyan/3dv2017_PBA_out/data/lmdb/"
         # self.data_pcd_train = data_lmdb_path + "randLampbb8Full_%s_%d_train_imageAndShape.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = data_lmdb_path + "random_randomLamp0822_%s_%d_train_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_train = os.path.join(data_lmdb_path, "rgb2depth_single_0209.lmdb")
+        self.data_ae_train = os.path.join(data_lmdb_path, data_lmdb_file)
         #self.data_pcd_train = data_lmdb_path + "random_randLamp1005_%s_%d_train_imageAndShape_single_persp.amdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = '/data_tmp/lmdb/badRenderbb9_car_24576_train_imageAndShape.lmdb'
         # self.data_pcd_test = data_lmdb_path + "random_randomLamp0822_%s_%d_test_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_test = os.path.join(data_lmdb_path, "rgb2depth_single_0209.lmdb")
+        self.data_ae_test = os.path.join(data_lmdb_path, data_lmdb_file)
         #self.data_pcd_test = data_lmdb_path + "random_randLamp1005_%s_%d_test_imageAndShape_single_persp.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_test = '/newfoundland/rz1/lmdb/badRenderbb9_car_24576_test_imageAndShape.lmdb'
         
@@ -120,8 +124,14 @@ class data_loader(object):
         self.ds_train = PrefetchData(self.ds_train, buffer_size, parall_num)
         self.ds_train = LMDBDataPoint(self.ds_train)
         self.ds_train = PrefetchDataZMQ(self.ds_train, parall_num)
+<<<<<<< HEAD
         self.ds_train = BatchData(self.ds_train, self.batch_size, remainder=False, use_list=True) # no smaller tail batch
         self.ds_train = RepeatedData(self.ds_train, -1)  # -1 for repeat infinite times
+=======
+
+        self.ds_train = BatchData(self.ds_train, self.batch_size, use_list=True)
+        self.ds_train = RepeatedData(self.ds_train, -1)
+>>>>>>> 156bb150292404aca8aa54b0394dec017b246924
         # TestDataSpeed(self.ds_train).start_test() # 164.15it/s
         self.ds_train.reset_state()
 
@@ -167,25 +177,26 @@ class data_loader(object):
 
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.rgb_batch_train), \
-            lambda: tf.to_float(self.rgb_batch_test)), [-1, self.resolution, self.resolution, 3])
+            lambda: tf.to_float(self.rgb_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
+        self.rgb_batch /= 255.0 #normalize to [0, 1]
         
         self.invZ_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.invZ_batch_train), \
-            lambda: tf.to_float(self.invZ_batch_test)), [-1, self.resolution, self.resolution, 1])
+            lambda: tf.to_float(self.invZ_batch_test)), [self.batch_size, self.resolution, self.resolution, 1])
         
         self.mask_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.mask_batch_train), \
-            lambda: tf.to_float(self.mask_batch_test)), [-1, self.resolution, self.resolution, 1])
+            lambda: tf.to_float(self.mask_batch_test)), [self.batch_size, self.resolution, self.resolution, 1])
 
         self.sn_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.sn_batch_train), \
-            lambda: tf.to_float(self.sn_batch_test)), [-1, self.resolution, self.resolution, 3])
+            lambda: tf.to_float(self.sn_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
         
         self.angles_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.angles_batch_train), \
-            lambda: tf.to_float(self.angles_batch_test)), [-1, 3])
+            lambda: tf.to_float(self.angles_batch_test)), [self.batch_size, 3])
 
         self.voxel_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.vox_batch_train), \
-            lambda: tf.to_float(self.vox_batch_test)), [-1, self.vox_reso, self.vox_reso, self.vox_reso])
+            lambda: tf.to_float(self.vox_batch_test)), [self.batch_size, self.vox_reso, self.vox_reso, self.vox_reso])
 

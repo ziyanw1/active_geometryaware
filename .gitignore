@@ -1,0 +1,9 @@
+*~
+*#*
+*.pyc
+log*
+vis*
+*lock
+data/data_cache
+data/lmdb*
+voxels
