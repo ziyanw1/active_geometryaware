@@ -103,7 +103,6 @@ class AE_rgb2d(object):
         other.constants.USE_OUTLINE = True
         
         pred_inputs = other.nets.unproject(pred_inputs)
-
         other.constants.mode = 'train'
         other.constants.rpvx_unsup = False
         other.constants.force_batchnorm_trainmode = False
@@ -114,6 +113,45 @@ class AE_rgb2d(object):
 
         self.pred_voxels = pred_outputs
 
+        self.angles = self.data_loader.angles_batch
+        self.theta = self.angles[:,0]
+        self.phi = self.angles[:,1]
+
+        print self.theta
+        print self.phi
+        world2cam_rot_mat = other.voxel.get_transform_matrix_tf(self.theta, self.phi)
+        print world2cam_rot_mat
+
+        gt_voxel = other.voxel.transformer_preprocess(self.voxel_batch)
+        gt_voxel = other.voxel.rotate_voxel(gt_voxel, world2cam_rot_mat)
+
+        print gt_voxel
+
+        proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
+        projected_gt = proj_and_post(gt_voxel)
+        print projected_gt
+        
+        def flatten(voxels):
+            H = self.FLAGS.resolution
+            W = self.FLAGS.resolution            
+            
+            pred_depth = other.voxel.voxel2depth_aligned(voxels)
+            pred_mask = other.voxel.voxel2mask_aligned(voxels)
+        
+            #replace bg with grey
+            hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
+            pred_depth *= hard_mask
+            pred_depth += 4.0 * (1.0 - hard_mask)
+
+            pred_depth = tf.image.resize_images(pred_depth, (H, W))
+            pred_mask = tf.image.resize_images(pred_mask, (H, W))
+            return pred_depth, pred_mask
+        
+        gt_depth, gt_mask = flatten(projected_gt)
+
+        self.gt_voxel2depth = gt_depth
+        self.gt_voxel2mask = gt_mask
+        
     def _voxel_net(self, pred_inputs):
         if other.constants.DEBUG_UNPROJECT:
             return pred_inputs
