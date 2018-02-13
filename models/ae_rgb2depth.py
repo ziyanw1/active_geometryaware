@@ -5,6 +5,7 @@ import numpy as np
 import math
 import sys
 import os
+import other
 
 import tensorflow.contrib.layers as ly
 from utils import util
@@ -40,7 +41,10 @@ class AE_rgb2d(object):
         self._create_loss()
         self._create_optimizer()
         self._create_summary()
+        
+        self._voxel_pred()
         self._visualize()
+        
         # create a sess
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -56,23 +60,52 @@ class AE_rgb2d(object):
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
     def _visualize(self):
-
-        self.voxel_batch = self.data_loader.voxel_batch
-        self.depth_batch = 1.0/self.invZ_batch
-        
         print '='*10
         print self.voxel_batch
+        print self.pred_voxels
         print self.rgb_batch
         print self.depth_batch
         print self.mask_batch
         print '='*10        
-                
+        
         self.vis = {
-            'voxel': self.data_loader.voxel_batch,
+            'voxel': self.voxel_batch,
+            'pred_voxel': self.pred_voxels,
             'rgb': self.rgb_batch,
             'depth': self.depth_batch,
             'mask': self.mask_batch
         }
+
+    def _voxel_pred(self):
+
+        self.voxel_batch = tf.expand_dims(self.data_loader.voxel_batch, axis = 4)
+        self.depth_batch = 1.0/self.invZ_batch
+        
+        #using gt inputs for now...
+        in_depth = self.depth_batch*2
+        in_mask = self.mask_batch
+
+        in_depth -= 4.0 #subtract the baseline
+
+        pred_inputs = tf.concat([in_depth, in_mask], axis = 3)
+
+        #setting up some constants
+        other.constants.S = self.FLAGS.voxel_resolution
+
+        fov = 30.0
+        focal_length = 1.0/math.tan(fov*math.pi/180/2)
+        other.constants.focal_length = focal_length
+        other.constants.BS = self.FLAGS.batch_size
+
+        other.constants.DEBUG_UNPROJECT = True
+        other.constants.USE_LOCAL_BIAS = False
+        
+        pred_inputs = other.nets.unproject(pred_inputs)
+        pred_outputs = self._voxel_net(pred_inputs)
+        self.pred_voxels = pred_outputs
+
+    def _voxel_net(self, pred_inputs):
+        return pred_inputs
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
