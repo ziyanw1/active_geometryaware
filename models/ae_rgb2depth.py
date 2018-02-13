@@ -40,7 +40,7 @@ class AE_rgb2d(object):
         self._create_loss()
         self._create_optimizer()
         self._create_summary()
-        self._test_voxel()        
+        self._visualize()
         # create a sess
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -55,17 +55,24 @@ class AE_rgb2d(object):
         # create summary
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
-    def _test_voxel(self):
-        print '='*10
-        print self.data_loader.voxel_batch
+    def _visualize(self):
 
+        self.voxel_batch = self.data_loader.voxel_batch
+        self.depth_batch = 1.0/self.invZ_batch
+        
+        print '='*10
+        print self.voxel_batch
         print self.rgb_batch
-        print self.invZ_batch
+        print self.depth_batch
         print self.mask_batch
+        print '='*10        
                 
-        self.vis = {'voxel': self.data_loader.voxel_batch}
-        #let's visualize voxels
-        #exit()
+        self.vis = {
+            'voxel': self.data_loader.voxel_batch,
+            'rgb': self.rgb_batch,
+            'depth': self.depth_batch,
+            'mask': self.mask_batch
+        }
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 

@@ -162,6 +162,7 @@ class data_loader(object):
         self.rgb_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.rgb_batch_train), \
             lambda: tf.to_float(self.rgb_batch_test)), [self.batch_size, self.resolution, self.resolution, 3])
+        self.rgb_batch /= 255.0 #normalize to [0, 1]
         
         self.invZ_batch = tf.reshape(tf.cond(self.is_training, \
             lambda: tf.to_float(self.invZ_batch_train), \
