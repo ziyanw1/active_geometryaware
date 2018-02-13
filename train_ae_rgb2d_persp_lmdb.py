@@ -121,8 +121,8 @@ def train(ae):
 
     v = VisVox()
 
-    opt_step = getattr(ae, FLAGS.opt_step_name)
-    loss = getattr(ae, FLAGS.loss_name)
+    ae.opt_step = getattr(ae, FLAGS.opt_step_name)
+    ae.loss_tensor = getattr(ae, FLAGS.loss_name)
     
     i = 0 
     try:
@@ -133,7 +133,7 @@ def train(ae):
             feed_dict = {ae.is_training: True, ae.data_loader.is_training: True}
 
             ops_to_run = [
-                opt_step, ae.merge_train, ae.counter, loss,
+                ae.opt_step, ae.merge_train, ae.counter, ae.loss_tensor,
                 ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss,
                 ae.vis
             ]

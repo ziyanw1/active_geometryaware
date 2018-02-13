@@ -83,7 +83,11 @@ class AE_rgb2d(object):
 
         self.voxel_batch = tf.expand_dims(self.data_loader.voxel_batch, axis = 4)
         self.depth_batch = 2.0/self.invZ_batch #scale by x2 to make the depths ~4
-        
+
+        BG_DEPTH = 4.0
+        bg_depth = tf.ones_like(self.depth_batch)*BG_DEPTH
+        self.depth_batch = tf.where(self.depth_batch > 5.0, bg_depth, self.depth_batch)
+
         #using gt inputs for now...
         in_depth = self.depth_batch
         in_mask = self.mask_batch
@@ -160,6 +164,11 @@ class AE_rgb2d(object):
 
         #take losses
         other.constants.eps = 1E-6
+
+        other.constants.DEBUG_LOSSES = False
+        if other.constants.DEBUG_LOSSES:
+            self.pred_voxels = other.tfpy.summarize_tensor(self.pred_voxels, 'pred')
+        
         self.voxel_loss = other.losses.binary_ce_loss(self.pred_voxels, self.gt_voxel)
         
     def _voxel_net(self, pred_inputs):
