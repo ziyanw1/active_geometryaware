@@ -101,16 +101,17 @@ class data_loader(object):
         #data_lmdb_path = "./data/lmdb/"
 
         data_lmdb_path = flags.data_path
-        data_lmdb_file = flags.data_file
+        data_lmdb_train_file = flags.data_file + '_train.lmdb'
+        data_lmdb_test_file = flags.data_file + '_test.lmdb'
         
         # data_lmdb_path = "/home/ziyan/3dv2017_PBA_out/data/lmdb/"
         # self.data_pcd_train = data_lmdb_path + "randLampbb8Full_%s_%d_train_imageAndShape.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = data_lmdb_path + "random_randomLamp0822_%s_%d_train_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_train = os.path.join(data_lmdb_path, data_lmdb_file)
+        self.data_ae_train = os.path.join(data_lmdb_path, data_lmdb_train_file)
         #self.data_pcd_train = data_lmdb_path + "random_randLamp1005_%s_%d_train_imageAndShape_single_persp.amdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = '/data_tmp/lmdb/badRenderbb9_car_24576_train_imageAndShape.lmdb'
         # self.data_pcd_test = data_lmdb_path + "random_randomLamp0822_%s_%d_test_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
-        self.data_ae_test = os.path.join(data_lmdb_path, data_lmdb_file)
+        self.data_ae_test = os.path.join(data_lmdb_path, data_lmdb_test_file)
         #self.data_pcd_test = data_lmdb_path + "random_randLamp1005_%s_%d_test_imageAndShape_single_persp.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_test = '/newfoundland/rz1/lmdb/badRenderbb9_car_24576_test_imageAndShape.lmdb'
         
