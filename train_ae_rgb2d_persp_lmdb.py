@@ -43,6 +43,7 @@ flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
 flags.DEFINE_string('data_file', 'rgb2depth_single_0209.lmdb', 'data file')
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
 flags.DEFINE_string('CHECKPOINT_DIR', './log', 'Log dir [default: log]')
+flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
 flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [default: tmp]')
 flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
 flags.DEFINE_string('ae_file', '', '')
@@ -75,7 +76,7 @@ flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
 flags.DEFINE_integer("save_every_step", 1000, "save every ? step")
 flags.DEFINE_boolean("if_test", True, "if test")
-flags.DEFINE_integer("test_every_step", 1000, "test every ? step")
+flags.DEFINE_integer("test_every_step", 5000, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
 flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
 flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
@@ -109,8 +110,14 @@ def prepare_plot():
 
 def save(ae, step, epoch, batch):
     # save_path = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
+    log_dir = os.path.join(FLAGS.LOG_DIR, FLAGS.task_name)
+    ckpt_dir = os.path.join(log_dir, FLAGS.CHECKPOINT_DIR)
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+    if not os.path.exists(ckpt_dir):
+        os.mkdir(ckpt_dir)
     saved_checkpoint = ae.saver.save(ae.sess, \
-        FLAGS.CHECKPOINT_DIR + '/step%d-epoch%d-batch%d.ckpt' % (step, epoch, batch), \
+        os.path.join(ckpt_dir, 'step%d-epoch%d-batch%d.ckpt' % (step, epoch, batch)), \
         global_step=step)
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
@@ -245,8 +252,8 @@ if __name__ == "__main__":
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
     
     FLAGS.LOG_DIR = FLAGS.LOG_DIR + '/' + FLAGS.task_name
-    FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
-    tf_util.mkdir(FLAGS.CHECKPOINT_DIR)
+    #FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
+    #tf_util.mkdir(FLAGS.CHECKPOINT_DIR)
     if not os.path.exists(FLAGS.LOG_DIR):
         os.mkdir(FLAGS.LOG_DIR)
         print tf_util.toYellow('===== Created %s.'%FLAGS.LOG_DIR)
@@ -262,8 +269,8 @@ if __name__ == "__main__":
             
             if check_delete():
                 os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
-                os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
-                print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR+FLAGS.CHECKPOINT_DIR)
+                #os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
+                print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR)
             else:
                 print tf_util.toRed('Overwrite.')
         else:

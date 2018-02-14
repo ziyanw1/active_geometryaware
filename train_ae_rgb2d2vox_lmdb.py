@@ -38,7 +38,7 @@ flags.DEFINE_integer('gpu', 0, "GPU to use [default: GPU 0]")
 flags.DEFINE_string('model_file', 'pcd_ae_1_lmdb', 'Model name')
 flags.DEFINE_string('cat_name', 'airplane', 'Category name')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
-flags.DEFINE_string('LOG_DIR', './log/summary', 'Log dir [default: log]')
+flags.DEFINE_string('LOG_DIR', './log', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
 flags.DEFINE_string('data_file', 'rgb2depth_single_0209.lmdb', 'data file')
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
@@ -109,8 +109,14 @@ def prepare_plot():
 
 def save(ae, step, epoch, batch):
     # save_path = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
+    log_dir = os.path.join(FLAGS.LOG_DIR, FLAGS.task_name)
+    ckpt_dir = os.path.join(log_dir, FLAGS.CHECKPOINT_DIR)
+    if not os.path.exists(log_dir):
+        os.mkdir(log_dir)
+    if not os.path.exists(ckpt_dir):
+        os.mkdir(ckpt_dir)
     saved_checkpoint = ae.saver.save(ae.sess, \
-        FLAGS.CHECKPOINT_DIR + '/step%d-epoch%d-batch%d.ckpt' % (step, epoch, batch), \
+        os.path.join(ckpt_dir, 'step%d-epoch%d-batch%d.ckpt' % (step, epoch, batch)), \
         global_step=step)
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
