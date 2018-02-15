@@ -27,8 +27,13 @@ import tf_util
 
 #from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
+<<<<<<< HEAD
 import psutil
 import gc
+=======
+import gc
+import resource
+>>>>>>> 8efd97fce2b76f678d7bf75612b96624e86449f5
 
 
 np.random.seed(0)
@@ -124,7 +129,11 @@ def save(ae, step, epoch, batch):
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
 def restore(ae):
-    pass
+    restore_path = FLAGS.CHECKPOINT_DIR
+    latest_checkpoint = tf.train.latest_checkpoint(restore_path)
+    log_string(tf_util.toYellow("-----> Model restoring from: %s..."%restore_path))
+    ae.restorer.restore(ae.sess, latest_checkpoint)
+    log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
 def train(ae):
 
@@ -151,6 +160,8 @@ def train(ae):
 
             log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+            log_string(' maxrss: {}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+            #gc.collect()
 
             print 'cpu: {}, vmem: {}, avai: {}'.format(psutil.cpu_percent(), psutil.virtual_memory().used >> 30,
                 psutil.virtual_memory().available >> 30)
