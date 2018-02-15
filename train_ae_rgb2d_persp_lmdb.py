@@ -27,6 +27,8 @@ import tf_util
 
 #from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
+import gc
+import resource
 
 
 np.random.seed(0)
@@ -122,7 +124,11 @@ def save(ae, step, epoch, batch):
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
 def restore(ae):
-    pass
+    restore_path = FLAGS.CHECKPOINT_DIR
+    latest_checkpoint = tf.train.latest_checkpoint(restore_path)
+    log_string(tf_util.toYellow("-----> Model restoring from: %s..."%restore_path))
+    ae.restorer.restore(ae.sess, latest_checkpoint)
+    log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
 def train(ae):
 
@@ -149,6 +155,8 @@ def train(ae):
 
             log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+            log_string(' maxrss: {}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+            #gc.collect()
 
             i += 1
             ae.train_writer.add_summary(summary, i)
