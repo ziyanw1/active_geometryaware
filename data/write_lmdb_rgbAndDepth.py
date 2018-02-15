@@ -249,9 +249,9 @@ if __name__ == "__main__":
             write_path = LMDB_DIR
             # write_path = '/data_tmp/lmdbqqqq'
             lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.lmdb"%(cat_name[category_name], sample_num, lmdb_name_append)
-            lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.lmdb')
+            #lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.lmdb')
             # depth,mask,surfnorm,campose,vox32
-            #lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0212.lmdb'.format(lmdb_name_append)) 
+            lmdb_write = os.path.join(write_path, 'rgb2depth_single_0212_{}.lmdb'.format(lmdb_name_append)) 
 
             command = 'rm -rf %s'%lmdb_write
             print command
