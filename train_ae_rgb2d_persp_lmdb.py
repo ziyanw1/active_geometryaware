@@ -27,13 +27,9 @@ import tf_util
 
 #from visualizers import VisVox
 from ae_rgb2depth import AE_rgb2d
-<<<<<<< HEAD
 import psutil
 import gc
-=======
-import gc
 import resource
->>>>>>> 8efd97fce2b76f678d7bf75612b96624e86449f5
 
 
 np.random.seed(0)
