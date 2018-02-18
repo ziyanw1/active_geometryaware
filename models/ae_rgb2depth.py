@@ -334,8 +334,15 @@ class AE_rgb2d(object):
             #self.invZ_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_invZ')
             
             #self.invZ_pred, self.z_rgb = self._create_unet(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_rgb2depth') 
-            self.z_rgb = self._create_encoder(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_encoder') 
-            self.preds = self._create_decoder(self.z_rgb, out_channel=5, trainable=True, if_bn=True, scope_name='unet_decoder')
+            if self.FLAGS.network_name == 'ae':
+                self.z_rgb = self._create_encoder(self.rgb_batch_norm, trainable=True, if_bn=True, scope_name='unet_encoder') 
+                self.preds = self._create_decoder(self.z_rgb, out_channel=5, trainable=True, if_bn=True, scope_name='unet_decoder')
+            elif self.FLAGS.network_name == 'unet':
+                self.preds, self.z_rgb = self._create_unet(self.rgb_batch_norm, out_channel=5, trainable=True,
+                    if_bn=True, scope_name='unet_rgb2depth') 
+            else:
+                raise NotImplementedError
+
             self.invZ_pred, self.mask_pred, self.sn_pred = tf.split(self.preds, [1,1,3], axis=3, name='split')
 
 

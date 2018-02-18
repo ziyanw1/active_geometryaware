@@ -61,7 +61,9 @@ flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
 flags.DEFINE_string('optimizer', 'adam', 'adam or momentum [default: adam]')
 flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 200000]')
 flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
+flags.DEFINE_integer('max_iter', 1000000, 'Decay step for lr decay [default: 200000]')
 # arch (magenta)
+flags.DEFINE_string('network_name', 'ae', 'Name for network architecture used for rgb to depth')
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
@@ -112,7 +114,7 @@ def prepare_plot():
 
 def save(ae, step, epoch, batch):
     # save_path = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
-    log_dir = os.path.join(FLAGS.LOG_DIR, FLAGS.task_name)
+    log_dir = FLAGS.LOG_DIR
     ckpt_dir = os.path.join(log_dir, FLAGS.CHECKPOINT_DIR)
     if not os.path.exists(log_dir):
         os.mkdir(log_dir)
@@ -124,9 +126,9 @@ def save(ae, step, epoch, batch):
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
 def restore(ae):
-    restore_path = FLAGS.CHECKPOINT_DIR
-    latest_checkpoint = tf.train.latest_checkpoint(restore_path)
-    log_string(tf_util.toYellow("-----> Model restoring from: %s..."%restore_path))
+    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    latest_checkpoint = tf.train.late#st_checkpoint(restore_path)
+    log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
@@ -173,8 +175,9 @@ def train(ae):
             #if i%FLAGS.vis_every_step == 0:
             #    v.process(vis, 'train', i)
             
-            #if i > 1000:
-            #    break
+            if i > FLAGS.max_iter:
+                print('Done training')
+                break
     except tf.errors.OutOfRangeError:
         print('Done training')
     finally:
