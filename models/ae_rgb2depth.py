@@ -34,15 +34,16 @@ class AE_rgb2d(object):
         self.set_i_to_pl = tf.placeholder(tf.int32,shape=[], name='set_i_to_pl')
         self.assign_i_op = tf.assign(self.global_i, self.set_i_to_pl)
 
-        # Add ops to save and restore all variable 
-        self.saver = tf.train.Saver()
-        self.restorer = tf.train.Saver()
         
         self._create_network()
         self._create_loss()
         
         self._create_optimizer()
         self._create_summary()
+        
+        # Add ops to save and restore all variable 
+        self.saver = tf.train.Saver(max_to_keep=5)
+        self.restorer = tf.train.Saver()
         
         # create a sess
         config = tf.ConfigProto()

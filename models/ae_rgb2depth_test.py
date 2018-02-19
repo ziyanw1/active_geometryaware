@@ -39,15 +39,16 @@ class AE_rgb2d(object):
         self.mask_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,1), name='gt_mask')
         self.sn_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,3), name='gt_sn')
 
-        # Add ops to save and restore all variable 
-        self.saver = tf.train.Saver()
-        self.restorer = tf.train.Saver()
         
         self._create_network()
         self._create_loss()
         
-        self._create_optimizer()
-        self._create_summary()
+        #self._create_optimizer()
+        #self._create_summary()
+        
+        # Add ops to save and restore all variable 
+        self.saver = tf.train.Saver()
+        self.restorer = tf.train.Saver()
         
         # create a sess
         config = tf.ConfigProto()
@@ -59,7 +60,7 @@ class AE_rgb2d(object):
         # # Start input enqueue threads.
         self.coord = tf.train.Coordinator()
         print "===== main-->tf.train.start_queue_runners"
-        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
+        #self.threads = tf.train.start_queue_runners(sess=self.sess, coord=self.coord)
         # create summary
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 

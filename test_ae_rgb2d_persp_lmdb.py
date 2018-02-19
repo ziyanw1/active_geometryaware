@@ -24,6 +24,7 @@ sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'models'))
 sys.path.append(os.path.join(BASE_DIR, 'utils'))
 import tf_util
+import scipy.misc as sm
 
 #from visualizers import VisVox
 from ae_rgb2depth_test import AE_rgb2d
@@ -47,12 +48,12 @@ flags.DEFINE_string('LOG_DIR', './log/', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
 flags.DEFINE_string('data_file', 'rgb2depth_single_0212', 'data file')
 flags.DEFINE_string('test_list_path', 'data/render_scripts/lists/03001627_debug.txt', 'test file path')
-flags.DEFINE_string('test_data_dir', 'data/data_cache/blender_renderings/03001627/res128_chair_debug_nonorm', 'test data directory')
+flags.DEFINE_string('test_data_dir', 'data/data_cache/blender_renderings/03001627/res128_chair_all', 'test data directory')
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
 flags.DEFINE_string('CHECKPOINT_DIR', 'ckpt', 'Log dir [default: log]')
 flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
-flags.DEFINE_string('task_name', 'rgb2depth_0213', 'task name to create under /LOG_DIR/ [default: tmp]')
-flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
+flags.DEFINE_string('task_name', 'rgb2depth_0218_unet_copy', 'task name to create under /LOG_DIR/ [default: tmp]')
+flags.DEFINE_boolean('restore', True, 'If resume from checkpoint')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
@@ -68,7 +69,7 @@ flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 2
 flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
 flags.DEFINE_integer('max_iter', 1000000, 'Decay step for lr decay [default: 200000]')
 # arch (magenta)
-flags.DEFINE_string('network_name', 'ae', 'Name for network architecture used for rgb to depth')
+flags.DEFINE_string('network_name', 'unet', 'Name for network architecture used for rgb to depth')
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
@@ -91,6 +92,7 @@ flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
 flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
 flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
+flags.DEFINE_string('save_result_path', 'results/tmp', 'path to save results')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -210,16 +212,41 @@ def test(ae, test_list_path):
     sn_losses = []
     mask_losses = []
     ae.loss_tensor = getattr(ae, FLAGS.loss_name)
+    results_dir = FLAGS.save_result_path
+    if not os.path.exists(results_dir):
+        os.mkdir(results_dir)
     
     with open(test_list_path, 'r') as f:
         model_names = f.readlines()
 
+    toc = time.time()
+
     for model_name in model_names:
         model_directory = os.path.join(FLAGS.test_data_dir, model_name[:-1])
+        model_save_dir = os.path.join(results_dir, model_name[:-1])
+        depth_save_dir = os.path.join(model_save_dir, 'depth')
+        mask_save_dir = os.path.join(model_save_dir, 'mask')
+        sn_save_dir = os.path.join(model_save_dir, 'sn')
+
+        if not os.path.exists(model_save_dir):
+            os.mkdir(model_save_dir)
+        if not os.path.exists(depth_save_dir):
+            os.mkdir(depth_save_dir)
+        if not os.path.exists(mask_save_dir):
+            os.mkdir(mask_save_dir)
+        if not os.path.exists(sn_save_dir):
+            os.mkdir(sn_save_dir)
+        
         for a in azim_all:
             for e in elev_all:
                 image_name = os.path.join(model_directory, 'RGB_{}_{}.png'.format(int(a), int(e)))
                 invZ_name = os.path.join(model_directory, 'invZ_{}_{}.npy'.format(int(a), int(e)))
+                invZ_save_npy = os.path.join(depth_save_dir, 'invZ_{}_{}.npy'.format(int(a), int(e)))
+                invZ_save_png = os.path.join(depth_save_dir, 'invZ_{}_{}.png'.format(int(a), int(e)))
+                mask_save_png = os.path.join(mask_save_dir, 'mask_{}_{}.png'.format(int(a), int(e)))
+                mask_save_npy = os.path.join(mask_save_dir, 'mask_{}_{}.npy'.format(int(a), int(e)))
+                sn_save_npy = os.path.join(sn_save_dir, 'sn_{}_{}.npy'.format(int(a), int(e)))
+                sn_save_png = os.path.join(sn_save_dir, 'sn_{}_{}.png'.format(int(a), int(e)))
                 rgb_single, mask_single_gt = read_png_to_uint8(image_name)
                 invZ_single_gt = np.load(invZ_name)
                 sn_single_gt = get_surface_from_depth(invZ_single_gt)
@@ -242,12 +269,32 @@ def test(ae, test_list_path):
                 
                 ops_to_run = [
                     ae.invZ_pred, ae.mask_pred, ae.sn_pred, ae.loss_tensor,
-                    ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss]
+                    ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss, ae.global_i]
+                
                 stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
-                invZ_pred, mask_pred, sn_pred, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
+                invZ_pred, mask_pred, sn_pred, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss, global_step = stuff
                 depth_losses.append(depth_recon_loss)
                 sn_losses.append(sn_recon_loss)
                 mask_losses.append(mask_cls_loss)
+                print global_step
+
+                invZ_pred = np.squeeze(np.asarray(invZ_pred, dtype=np.float32), axis=[0,-1])
+                mask_pred = np.squeeze(np.asarray(mask_pred, dtype=np.float32), axis=[0,-1])
+                sn_pred = np.squeeze(np.asarray(sn_pred, dtype=np.float32), axis=0)
+
+                np.save(invZ_save_npy, invZ_pred)
+                sm.imsave(invZ_save_png, invZ_pred) 
+                np.save(mask_save_npy, mask_pred)
+                sm.imsave(mask_save_png, mask_pred)
+                np.save(sn_save_npy, sn_pred)
+                sm.imsave(sn_save_png, sn_pred)
+    
+    tic = time.time()
+    mean_depth_loss = np.mean(np.asarray(depth_losses))
+    mean_sn_loss = np.mean(np.asarray(sn_losses))
+    mean_mask_loss = np.mean(np.asarray(mask_losses))
+    log_string(tf_util.toRed('Test time {}s, depth recon loss: {}, sn recon loss: {}, mask cls loss:{}.'.format(\
+        toc-tic, mean_depth_loss, mean_sn_loss, mean_mask_loss)))
 
     #try:
     #    while not ae.coord.should_stop():
