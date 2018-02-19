@@ -22,7 +22,7 @@ def lrelu(x, leak=0.2, name='lrelu'):
 class AE_rgb2d(object):
     def __init__(self, FLAGS):
         self.FLAGS = FLAGS
-        self.data_loader = data_loader(self.FLAGS)
+        #self.data_loader = data_loader(self.FLAGS)
 
         self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
 
@@ -33,6 +33,11 @@ class AE_rgb2d(object):
         self.global_i = tf.Variable(0, name='global_i', trainable=False)
         self.set_i_to_pl = tf.placeholder(tf.int32,shape=[], name='set_i_to_pl')
         self.assign_i_op = tf.assign(self.global_i, self.set_i_to_pl)
+        
+        self.rgb_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,3), name='input_rgb')
+        self.invZ_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,1), name='gt_invZ')
+        self.mask_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,1), name='gt_mask')
+        self.sn_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,3), name='gt_sn')
 
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
@@ -322,13 +327,6 @@ class AE_rgb2d(object):
     def _create_network(self):
         with tf.device('/gpu:0'):
 
-            # TODO: load data
-            #self.data_loader = DataLoader(self.FLAGS)
-            self.rgb_batch = self.data_loader.rgb_batch
-            self.invZ_batch = self.data_loader.invZ_batch
-            self.mask_batch = self.data_loader.mask_batch
-            print self.mask_batch.get_shape().as_list()
-            self.sn_batch = self.data_loader.sn_batch
             self.rgb_batch_norm = tf.subtract(tf.div(self.rgb_batch, 255.), 0.5)
 
             #self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
