@@ -79,7 +79,7 @@ flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
-flags.DEFINE_integer("save_every_step", 1000, "save every ? step")
+flags.DEFINE_integer("save_every_step", 10000, "save every ? step")
 flags.DEFINE_boolean("if_test", True, "if test")
 flags.DEFINE_integer("test_every_step", 5000, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
@@ -128,7 +128,7 @@ def save(ae, step, epoch, batch):
 
 def restore(ae):
     restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
-    latest_checkpoint = tf.train.late#st_checkpoint(restore_path)
+    latest_checkpoint = tf.train.latest_checkpoint(restore_path)
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))

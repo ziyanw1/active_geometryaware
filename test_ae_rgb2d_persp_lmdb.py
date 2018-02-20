@@ -52,7 +52,7 @@ flags.DEFINE_string('test_data_dir', 'data/data_cache/blender_renderings/0300162
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
 flags.DEFINE_string('CHECKPOINT_DIR', 'ckpt', 'Log dir [default: log]')
 flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
-flags.DEFINE_string('task_name', 'rgb2depth_0218_unet_copy', 'task name to create under /LOG_DIR/ [default: tmp]')
+flags.DEFINE_string('task_name', 'rgb2depth_0218_unet', 'task name to create under /LOG_DIR/ [default: tmp]')
 flags.DEFINE_boolean('restore', True, 'If resume from checkpoint')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
@@ -202,6 +202,29 @@ def train(ae):
     ae.coord.join(ae.threads)
     ae.sess.close()
 
+def process_invZ(invZ):
+    depth = np.reciprocal(invZ)
+    depth[np.where(np.abs(depth)>5)] = 2.0
+    depth = depth - 1.5
+    #depth[np.where(depth<=0)] = 0
+    #depth[np.where(depth>=1.0)] = 1.0
+
+    return depth
+
+def compare_a_b(a, b, dir_path, azim, elev, mode):
+    
+    color_map = 'gray'
+    path = os.path.join(dir_path, '{}_{}_{}.png'.format(mode, int(azim), int(elev)))
+    if mode == 'sn':
+        color_map=None
+
+    plt.subplot(121)
+    plt.imshow(a, cmap=color_map, vmin=0, vmax=1)
+    plt.subplot(122)
+    plt.imshow(b, cmap=color_map, vmin=0, vmax=1)
+    plt.savefig(path)
+
+
 
 def test(ae, test_list_path):
     
@@ -220,6 +243,7 @@ def test(ae, test_list_path):
         model_names = f.readlines()
 
     toc = time.time()
+    plt.figure()
 
     for model_name in model_names:
         model_directory = os.path.join(FLAGS.test_data_dir, model_name[:-1])
@@ -227,6 +251,7 @@ def test(ae, test_list_path):
         depth_save_dir = os.path.join(model_save_dir, 'depth')
         mask_save_dir = os.path.join(model_save_dir, 'mask')
         sn_save_dir = os.path.join(model_save_dir, 'sn')
+        compare_save_dir = os.path.join(model_save_dir, 'compare')
 
         if not os.path.exists(model_save_dir):
             os.mkdir(model_save_dir)
@@ -236,6 +261,8 @@ def test(ae, test_list_path):
             os.mkdir(mask_save_dir)
         if not os.path.exists(sn_save_dir):
             os.mkdir(sn_save_dir)
+        if not os.path.exists(compare_save_dir):
+            os.mkdir(compare_save_dir)
         
         for a in azim_all:
             for e in elev_all:
@@ -288,6 +315,20 @@ def test(ae, test_list_path):
                 sm.imsave(mask_save_png, mask_pred)
                 np.save(sn_save_npy, sn_pred)
                 sm.imsave(sn_save_png, sn_pred)
+
+                invZ_single = np.squeeze(invZ_single_gt)
+                Z_single = process_invZ(invZ_single)
+                Z_pred = process_invZ(invZ_pred)
+                plt.subplot(121)
+                plt.imshow(Z_single, cmap='gray', vmin=0, vmax=1)
+                plt.subplot(122)
+                plt.imshow(Z_pred, cmap='gray', vmin=0, vmax=1)
+                #plt.show()
+                compare_a_b(np.squeeze(invZ_single_gt), invZ_pred, compare_save_dir, a, e, mode='invZ')
+                compare_a_b(np.squeeze(mask_single_gt), mask_pred, compare_save_dir, a, e, mode='mask')
+                compare_a_b(np.squeeze(sn_single_gt), sn_pred, compare_save_dir, a, e, mode='sn')
+
+
     
     tic = time.time()
     mean_depth_loss = np.mean(np.asarray(depth_losses))

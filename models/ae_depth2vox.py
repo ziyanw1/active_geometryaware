@@ -19,7 +19,7 @@ def lrelu(x, leak=0.2, name='lrelu'):
         return f1*x + f2 * abs(x)
 
 
-class AE_rgb2d(object):
+class AE_dep2vox(object):
     def __init__(self, FLAGS):
         self.FLAGS = FLAGS
         self.data_loader = data_loader(self.FLAGS)
@@ -35,8 +35,9 @@ class AE_rgb2d(object):
         self.assign_i_op = tf.assign(self.global_i, self.set_i_to_pl)
 
         
-        self._create_network()
-        self._create_loss()
+        #self._create_network()
+        #self._create_loss()
+        self._voxel_pred()
         
         self._create_optimizer()
         self._create_summary()
@@ -331,6 +332,7 @@ class AE_rgb2d(object):
             print self.mask_batch.get_shape().as_list()
             self.sn_batch = self.data_loader.sn_batch
             self.rgb_batch_norm = tf.subtract(tf.div(self.rgb_batch, 255.), 0.5)
+            
 
             #self.rgb_batch = tf.placeholder(tf.float32, shape=(None,128,128,3), name='input_rgb')
             #self.invZ_batch = tf.placeholder(tf.float32, shape=(None,128,128,1), name='gt_invZ')
