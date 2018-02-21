@@ -75,6 +75,7 @@ flags.DEFINE_float('reg_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
 flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator")
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
+flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 # log and drawing (blue)
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
@@ -152,12 +153,22 @@ def train(ae):
                 ae.opt_step, ae.merge_train, ae.counter, ae.loss_tensor,
                 ae.depth_recon_loss, ae.sn_recon_loss, ae.mask_cls_loss]
 
+            if FLAGS.use_gan:
+                ops_to_run = ops_to_run + [ae.opt_D, ae.D_loss, ae.G_loss]
+
             stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
-            opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
+            if FLAGS.use_gan:
+                opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss, opt_D, D_loss, G_loss = stuff
+            else:
+                opt, summary, step, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss = stuff
             toc = time.time()
 
             log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
                 toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+
+            if FLAGS.use_gan:
+                log_string('D_loss: {}, G_loss: {}'.format(D_loss, G_loss))
+
             log_string(' maxrss: {}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
             #gc.collect()
 

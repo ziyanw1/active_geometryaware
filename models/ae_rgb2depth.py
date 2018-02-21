@@ -319,6 +319,50 @@ class AE_rgb2d(object):
                     activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
 
         return net_out_
+            
+    def _create_discriminator(self, preds, trainable=True, if_bn=False, reuse=False, scope_name='discriminator'):
+        with tf.variable_scope(scope_name) as scope:
+            if reuse:
+                scope.reuse_variables()
+
+            if if_bn:
+                batch_normalizer_gen = slim.batch_norm
+                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
+            else:
+                #self._print_arch('=== NOT Using BN for GENERATOR!')
+                batch_normalizer_gen = None
+                batch_norm_params_gen = None
+
+            if self.FLAGS.if_l2Reg:
+                weights_regularizer = slim.l2_regularizer(1e-5)
+            else:
+                weights_regularizer = None
+            
+            with slim.arg_scope([slim.fully_connected],
+                    activation_fn=self.activation_fn,
+                    trainable=trainable,
+                    normalizer_fn=batch_normalizer_gen,
+                    normalizer_params=batch_norm_params_gen,
+                    weights_regularizer=weights_regularizer):
+
+                net = slim.conv2d(preds, 64, kernel_size=[4, 4], stride=[2,2], padding='SAME',
+                    scope='discriminator_conv1') 
+                net = slim.conv2d(net, 128, kernel_size=[4, 4], stride=[2,2], padding='SAME',
+                    scope='discriminator_conv2')
+                net = slim.conv2d(net, 256, kernel_size=[4, 4], stride=[2,2], padding='SAME',
+                    scope='discriminator_conv3')
+                net = slim.conv2d(net, 256, kernel_size=[4, 4], stride=[2,2], padding='SAME',
+                    scope='discriminator_conv4')
+                net = slim.conv2d(net, 512, kernel_size=[4, 4], stride=[2,2], padding='SAME',
+                    scope='discriminator_conv5')
+
+                net = slim.flatten(net, scope='discriminator_flatten')
+                net = slim.fully_connected(net, 4096, scope='discriminator_fc6')
+                net = slim.dropout(net, scope='discriminator_dropout1')
+                net = slim.fully_connected(net, 4096, scope='discriminator_fc7')
+                net = slim.dropout(net, scope='discriminator_dropout2')
+                net = slim.fully_connected(net, 1, activation_fn=None, scope='discriminator_fc8')
+                return tf.nn.sigmoid(net), net
 
     def _create_network(self):
         with tf.device('/gpu:0'):
@@ -347,6 +391,11 @@ class AE_rgb2d(object):
 
             self.invZ_pred, self.mask_pred, self.sn_pred = tf.split(self.preds, [1,1,3], axis=3, name='split')
 
+            if self.FLAGS.use_gan:
+                self.fake_pred, _ = self._create_discriminator(self.preds, scope_name='discriminator')
+                self.real_pred, _ = self._create_discriminator(tf.concat((self.invZ_batch, self.mask_batch, self.sn_batch),
+                    axis=-1), reuse=tf.AUTO_REUSE, scope_name='discriminator')
+                
 
     def _create_loss(self):
         self.depth_recon_loss = tf.reduce_mean(tf.sqrt(tf.reduce_sum(tf.square(self.invZ_pred-self.invZ_batch),
@@ -360,6 +409,10 @@ class AE_rgb2d(object):
 
         self.sketch_loss = self.depth_recon_loss + self.sn_recon_loss + self.mask_cls_loss
 
+        if self.FLAGS.use_gan:
+            self.D_loss = -tf.reduce_mean(tf.log(self.real_pred) + tf.log(1.0-self.fake_pred))
+            self.G_loss = -tf.reduce_mean(tf.log(self.fake_pred))
+
     def _create_optimizer(self):
         
         unet_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
@@ -371,12 +424,26 @@ class AE_rgb2d(object):
 
         if self.FLAGS.optimizer == 'momentum':
             self.optimizer = tf.train.MomentumOptimizer(self.learning_rate, momentum=self.FLAGS.momentum)
+            if self.FLAGS.use_gan:
+                self.optimizer_D = tf.train.MomentumOptimizer(self.learning_rate, momentum=self.FLAGS.momentum)
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
+            if self.FLAGS.use_gan:
+                self.optimizer_D = tf.train.AdamOptimizer(self.learning_rate)
             
-        self.opt_step = self.optimizer.minimize(
-            self.sketch_loss, var_list=unet_vars, global_step=self.counter
-        )
+
+        if self.FLAGS.use_gan:
+            D_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
+            self.opt_D = self.optimizer_D.minimize(
+                self.D_loss, var_list=D_vars, global_step=self.counter
+            )
+            self.opt_step = self.optimizer.minimize(
+                self.sketch_loss+self.G_loss, var_list=unet_vars, global_step=self.counter
+            )
+        else:
+            self.opt_step = self.optimizer.minimize(
+                self.sketch_loss, var_list=unet_vars, global_step=self.counter
+            )
         
 
     def _create_summary(self):
