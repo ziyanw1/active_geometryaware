@@ -42,9 +42,15 @@ import binvox_rw
 sample_num = 24576
 #resolution=32
 resolution = 128
+<<<<<<< HEAD
 vox_factor = 0.25
 VIEWS = 200
 
+=======
+
+vox_factor = 0.25
+
+>>>>>>> 7a71097d9b11eb50a4a8314b2e8763a1523442bc
 #BASE_OUT_DIR = '/home/rz1/Documents/Research/3dv2017_PBA_out/'
 BASE_OUT_DIR = './data_cache'
 
