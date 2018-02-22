@@ -10,7 +10,8 @@ import other
 import tensorflow.contrib.layers as ly
 from utils import util
 from utils import tf_util
-from rgb2d_lmdb_loader import data_loader 
+#from rgb2d_lmdb_loader import data_loader
+from rgb2d_tfr_loader import data_loader 
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
