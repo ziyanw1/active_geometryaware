@@ -132,12 +132,13 @@ class data_loader(object):
         self.ds_train.reset_state()
         '''
 
+        raise Exception, 'update size'
         self.ds_train = TFRecordData(self.data_ae_train, size = 6) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
         self.x_size_train = self.ds_train.size()
         self.ds_train = LocallyShuffleData(self.ds_train, buffer_size)
         self.ds_train = PrefetchData(self.ds_train, buffer_size, parall_num)
         self.ds_train = PrefetchDataZMQ(self.ds_train, parall_num)
-        self.ds_train = RepeatedData(self.ds_train, 10) #remove this later
+        #self.ds_train = RepeatedData(self.ds_train, 10) #remove this later
         self.ds_train = BatchData(self.ds_train, self.batch_size, remainder=False, use_list=True) # no smaller tail batch
         self.ds_train = RepeatedData(self.ds_train, -1)  # -1 for repeat infinite times
         # TestDataSpeed(self.ds_train).start_test() # 164.15it/s
@@ -158,12 +159,13 @@ class data_loader(object):
         self.ds_test.reset_state()
         '''
 
+        raise Exception, 'update size'        
         self.ds_test = TFRecordData(self.data_ae_test, size=3) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
         self.x_size_test = self.ds_test.size()
         self.ds_test = PrefetchData(ds=self.ds_test, nr_prefetch=buffer_size, nr_proc=parall_num)
         self.ds_test = PrefetchDataZMQ(ds=self.ds_test, nr_proc=parall_num)
         # all dataset will be iterated
-        self.ds_test = RepeatedData(self.ds_test, 10)
+        #self.ds_test = RepeatedData(self.ds_test, 10)
         self.ds_test = BatchData(self.ds_test, self.batch_size, remainder=False, use_list=True)
         self.ds_test = RepeatedData(self.ds_test, -1)
         self.ds_test.reset_state()
