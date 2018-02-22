@@ -42,22 +42,16 @@ import binvox_rw
 sample_num = 24576
 #resolution=32
 resolution = 128
-<<<<<<< HEAD
 vox_factor = 0.25
-=======
 VIEWS = 200
 
-vox_factor = 1.0
-#vox_factor = 0.25
-
->>>>>>> 156bb150292404aca8aa54b0394dec017b246924
 #BASE_OUT_DIR = '/home/rz1/Documents/Research/3dv2017_PBA_out/'
 BASE_OUT_DIR = './data_cache'
 
 # pcd_path = '/home/rz1/Documents/Research/3dv2017_PBA_out/PCDs/'
 
-#LMDB_DIR='./lmdb'
-LMDB_DIR='./lmdb128'
+LMDB_DIR='./lmdb'
+#LMDB_DIR='./lmdb128'
 
 categories = [
     # "02691156", #airplane
