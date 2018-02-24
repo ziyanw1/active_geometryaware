@@ -89,5 +89,5 @@ class ShapeNetEnv():
         else:
             done = False
 
-        return [self.prev_azims, self.prev_elevs], [self.current_azim, self.current_elev], done
+        return [self.prev_azims, self.prev_elevs], [self.current_azim, self.current_elev], done, self.current_model
 
