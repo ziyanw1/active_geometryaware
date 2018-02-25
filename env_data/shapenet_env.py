@@ -91,3 +91,8 @@ class ShapeNetEnv():
 
         return [self.prev_azims, self.prev_elevs], [self.current_azim, self.current_elev], done, self.current_model
 
+class trajectData():
+    def __init__(self, states, actions, model_id):
+        self.states = states
+        self.actions = actions
+        self.model_id = model_id
