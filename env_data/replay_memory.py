@@ -4,12 +4,16 @@ import json
 import numpy as np
 import scipy.misc as sm
 import tensorflow as tf
+import scipy.ndimage as ndimg
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from lsm.mvnet import MVNet
 from lsm.utils import Bunch, get_session_config
 from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
+
+sys.path.append(os.path.join('utils'))
+import binvox_rw
 
 cat_name = {
     "02691156" : "airplane",
@@ -85,6 +89,19 @@ class ReplayMemory():
         
         self.count += 1
 
+    def read_bv(self, fn):
+        with open(fn, 'rb') as f:
+            model = binvox_rw.read_as_3d_array(f)
+        data = np.float32(model.data)
+        return data
+
+    def read_vox(self, vox_name): 
+        vox_model = self.read_bv(vox_name) 
+        vox_factor = self.voxel_resolution * 1.0 / 128
+        vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
+
+        return vox_model_zoom
+
     def read_png_to_uint8(self, azim, elev, model_id):
         img_name = 'RGB_{}_{}.png'.format(int(azim), int(elev))
         img_path = os.path.join(self.data_dir, model_id, img_name)
@@ -127,8 +144,57 @@ class ReplayMemory():
 
     def calu_reward(self, vox_curr_batch, vox_next_batch, vox_gt_batch):
         batch_size = vox_gt_batch.shape[0]
+        reward_batch = np.ones((batch_size, ), dtype=np.float32)
 
-        return np.ones((batch_size, ), dtype=np.float32)
+        print vox_curr_batch.shape
+        print vox_next_batch.shape
+        print vox_gt_batch.shape
+
+        if self.FLAGS.reward_type == 'IoU':
+            calu_r_func = self.calu_IoU_reward
+        elif self.FLAGS.reward_type == 'IG':
+            calu_r_func = self.calu_IG_reward
+
+        for i in range(vox_gt_batch.shape[0]):
+            reward_batch[i] = calu_r_func(vox_curr_batch[i], vox_next_batch[i], vox_gt_batch[i])
+
+        return reward_batch
+
+    def calu_IoU_reward(self, vox_curr, vox_next, vox_gt):
+        vox_curr[vox_curr >= 0.5] = 1
+        vox_curr[vox_curr < 0.5] = 0
+        vox_next[vox_next >= 0.5] = 1
+        vox_next[vox_next < 0.5] = 0
+
+        def calu_IoU(a, b):
+            inter = a*b
+            sum_inter = np.sum(inter[:])
+            union = a + b
+            union[union > 0.5] = 1
+            sum_union = np.sum(union[:])
+            return sum_inter*1.0/sum_union
+
+        IoU_curr = calu_IoU(vox_curr, vox_gt)
+        IoU_next = calu_IoU(vox_next, vox_gt)
+
+        return IoU_next - IoU_curr
+
+    def calu_IG_reward(self, vox_curr, vox_next, vox_gt):
+
+        def calu_cross_entropy(a, b):
+            a[b == 0] = 1 - a[b == 0] 
+            a += 1e-5
+
+            cross_entropy = np.log(a)
+            return np.sum(cross_entropy[:])
+
+        cross_entropy_curr = calu_cross_entropy(vox_curr, vox_gt)
+        cross_entropy_next = calu_cross_entropy(vox_next, vox_gt)
+
+        def sigmoid(a):
+            return 1.0 / (1 + np.exp(-a))
+
+        return cross_entropy_next - cross_entropy_curr
 
     def get_batch(self, batch_size=32):
         
@@ -136,10 +202,10 @@ class ReplayMemory():
         invZ_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, ), dtype=np.float32)
         mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution,), dtype=np.float32)
         sn_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
-        vox_gt_batch = np.ones((self.max_episode_length, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
+        vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
             dtype=np.float32)
-        vox_current_batch = np.ones((self.max_episode_length, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
-            dtype=np.float32)
+        #vox_current_batch = np.ones((self.max_episode_length, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
+        #    dtype=np.float32)
         azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
         elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
         actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
@@ -147,8 +213,8 @@ class ReplayMemory():
         K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
         K_batch = np.tile(K_single[None, None, ...], (batch_size, self.max_episode_length, 1, 1))  
         #K_batch = np.zeros((self.max_episode_length, batch_size, 3, 3), dtype=np.float32)
-        state_mask_current = np.ones_like(RGB_list_batch, dtype=np.float32)
-        state_mask_next = np.ones_like(RGB_list_batch, dtype=np.float32)
+        #state_mask_current = np.ones_like(RGB_list_batch, dtype=np.float32)
+        #state_mask_next = np.ones_like(RGB_list_batch, dtype=np.float32)
         current_idx_list = np.zeros((batch_size,), dtype=np.uint8)
 
         for b_idx in range(batch_size):
@@ -162,32 +228,36 @@ class ReplayMemory():
             model_id = data_.model_id
             current_idx = np.random.randint(0, self.max_episode_length-1)
             current_idx_list[b_idx] = current_idx
-            state_mask_current[b_idx, 0:current_idx, ...] = 0.0
-            state_mask_next[b_idx, 0:current_idx+1, ...] = 0.0
+            #state_mask_current[b_idx, 0:current_idx, ...] = 0.0
+            #state_mask_next[b_idx, 0:current_idx+1, ...] = 0.0
+            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+            vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
 
             for l_idx in range(self.max_episode_length):
                 RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, ...] = self.read_png_to_uint8(
-                    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], data_.model_id)
+                    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
 
                 invZ_batch[b_idx, l_idx, ...] = self.read_invZ(azim_batch[b_idx, l_idx],
-                    elev_batch[b_idx, l_idx], data_.model_id)
+                    elev_batch[b_idx, l_idx], model_id)
 
                 R_batch[b_idx, l_idx, :, 0:3] = self.get_R(azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx])
 
                 ## TODO: update sn_batch and vox_gt_batch
 
-        feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch*state_mask_current}
-        pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
-        vox_current_batch = pred_voxels
+        #print 'K_batch: {}'.format(K_batch.shape)
+        #feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch*state_mask_current}
+        #pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+        #vox_current_batch = pred_voxels
         
-        feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch*state_mask_next}
+        feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch}
         pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
-        vox_next_batch = pred_voxels
+        vox_curr_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list, ...], axis=-1)
+        vox_next_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list+1, ...], axis=-1)
 
         RGB_batch = np.asarray([RGB_list_batch[bi, li, ...] for bi, li in zip(range(batch_size), current_idx_list)],
             dtype=np.float32)
 
-        reward_batch = self.calu_reward(vox_current_batch, vox_next_batch, vox_gt_batch)
+        reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
 
         #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
-        return RGB_batch, vox_current_batch, reward_batch, actions_batch
+        return RGB_batch, vox_curr_batch, reward_batch, actions_batch
