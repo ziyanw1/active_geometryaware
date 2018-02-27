@@ -82,7 +82,19 @@ class ShapeNetEnv():
             self.current_elev = min(self.current_elev + 10, 60)
         elif action == 3:
             self.current_elev = max(self.current_elev - 10, 10)
-
+        elif action == 4:
+            self.current_azim = np.mod(self.current_azim + 10, 360)
+            self.current_elev = min(self.current_elev + 10, 60)
+        elif action == 5:
+            self.current_azim = np.mod(self.current_azim + 10, 360)
+            self.current_elev = max(self.current_elev - 10, 10)
+        elif action == 6:
+            self.current_azim = np.mod(self.current_azim - 10, 360)
+            self.current_elev = min(self.current_elev + 10, 60)
+        elif action == 7:
+            self.current_azim = np.mod(self.current_azim - 10, 360)
+            self.current_elev = max(self.current_elev - 10, 10)
+            
         self.step_count += 1
         if self.step_count == self.max_episode_length - 1:
             done = True
