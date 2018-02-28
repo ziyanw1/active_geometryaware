@@ -99,6 +99,8 @@ flags.DEFINE_integer('mem_length', 100, 'memory length for replay memory')
 flags.DEFINE_integer('action_num', 8, 'number of actions')
 flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
+flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
+flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -145,10 +147,13 @@ def restore(ae):
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
-def select_action(rgb, vox, epsilon):
-
-    feed_dict = {'rgb_batch': rgb[None, ...], 'vox_batch': vox[None, ...]}
-    pass
+def select_action(agent, rgb, vox, epsilon):
+    feed_dict = {agent.rgb_batch: rgb[None, ...], agent.vox_batch: vox[None, ...]}
+    
+    if np.random.uniform(low=0.0, high=1.0) > epsilon:
+        action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
+    else
+        return np.random.randint(low=0, high=FLAGS.action_num)
 
 def train(agent):
     
@@ -159,32 +164,50 @@ def train(agent):
     burn_in(senv, replay_mem)
     log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
 
+    epsilon = FLAGS.init_eps
+    K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
+    K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
     for i_idx in range(FLAGS.max_iter):
-        state = senv.reset(True)
+        state, model_id = senv.reset(True)
         actions = []
+        RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+        R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+        vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+            dtype=np.float32)
 
+        epsilon = FLAGS.end_eps + (FLAGS.init_eps-FLAGS.end_eps)*i_idx / FLAGS.max_iter
+
+        RGB_temp_list[0, ...] = replay_mem.read_png_to_uint8(state[0,0], state[1,0], model_id)
+        R_list[0, ...] = replay_mem.get_R(state[0,0], state[1,0])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
-            actions.append(np.random.randint(0,8))
-            state, next_state, done, model = senv.step(actions[-1])
+            agent_action = select_action(agent, state_temp_list[e_idx], vox_temp, epsilon) 
+            actions.append(agent_action)
+            state, next_state, done, model_id = senv.step(actions[-1])
+            RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
                 traj_state[1] += [next_state[1]]
-                temp_traj = trajectData(traj_state, actions, model)
+                temp_traj = trajectData(traj_state, actions, model_id)
                 replay_mem.append(temp_traj)
+                break
+
+            ## TODO: update vox_temp
+            vox_temp = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
 
         rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
             agent.action_batch:action_batch}
-        loss = agent.sess.run(agent.loss, feed_dict=feed_dict)
+        loss = agent.sess.run([agent.loss], feed_dict=feed_dict)
         print 'loss {}'.format(loss)
 
 def test(agent):
     pass
 
 def burn_in(senv, replay_mem):     
-    state = senv.reset(True)
+    state, model = senv.reset(True)
     actions = []
     for i in range(FLAGS.max_episode_length*FLAGS.burn_in_length):
         actions.append(np.random.randint(0,8))

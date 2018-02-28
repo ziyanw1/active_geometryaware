@@ -68,7 +68,7 @@ class ShapeNetEnv():
         self.current_azim = np.random.choice(azim_all)
         self.current_elev = np.random.choice(elev_all)
 
-        return [[self.current_azim], [self.current_elev]]
+        return [[self.current_azim], [self.current_elev]], self.current_model
 
     def step(self, action):
 

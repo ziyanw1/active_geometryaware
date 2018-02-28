@@ -140,7 +140,7 @@ class ReplayMemory():
         R[1, 3] = 2*np.cos(elev_rad)*np.sin(azim_rad)
         R[2, 3] = 2*np.sin(elev_rad)
 
-        return np.matmul(elev_R, azim_R) 
+        return R 
 
     def calu_reward(self, vox_curr_batch, vox_next_batch, vox_gt_batch):
         batch_size = vox_gt_batch.shape[0]
@@ -221,6 +221,7 @@ class ReplayMemory():
             higher_bound = min(self.count, self.mem_length)
             rand_idx = np.random.randint(0, higher_bound)
             data_ = self.mem_list[rand_idx]
+            print data_.states[0]
 
             azim_batch[b_idx, ...] = np.asarray(data_.states[0])
             elev_batch[b_idx, ...] = np.asarray(data_.states[1])
@@ -240,7 +241,7 @@ class ReplayMemory():
                 invZ_batch[b_idx, l_idx, ...] = self.read_invZ(azim_batch[b_idx, l_idx],
                     elev_batch[b_idx, l_idx], model_id)
 
-                R_batch[b_idx, l_idx, :, 0:3] = self.get_R(azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx])
+                R_batch[b_idx, l_idx, ...] = self.get_R(azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx])
 
                 ## TODO: update sn_batch and vox_gt_batch
 
@@ -258,6 +259,15 @@ class ReplayMemory():
             dtype=np.float32)
 
         reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
+        action_response_batch = actions_batch[range(batch_size), current_idx_list]
 
         #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
-        return RGB_batch, vox_curr_batch, reward_batch, actions_batch
+        return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
+
+    def get_vox_pred(self, RGB_list, R_list, K_list, seq_idx):
+        feed_dict = {self.net.K: K_list[None, ...], self.net.Rcam: R_list[None, ...], 
+            self.net.ims: RGB_list_batch[None, ...]}
+        pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+
+        return pred_voxels[0, seq_idx, ...]
+        
