@@ -269,5 +269,5 @@ class ReplayMemory():
             self.net.ims: RGB_list_batch[None, ...]}
         pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
 
-        return pred_voxels[0, seq_idx, ...]
+        return pred_voxels[0, ...]
         
