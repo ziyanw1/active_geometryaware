@@ -195,7 +195,8 @@ def train(agent):
                 break
 
             ## TODO: update vox_temp
-            vox_temp = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = vox_temp_list[e_idx+1, ...]
 
         rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
