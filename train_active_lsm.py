@@ -56,7 +56,7 @@ flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
-flags.DEFINE_integer('resolution', 128, '')
+flags.DEFINE_integer('resolution', 224, '')
 flags.DEFINE_integer('voxel_resolution', 32, '')
 flags.DEFINE_string('opt_step_name', 'opt_step', '')
 flags.DEFINE_string('loss_name', 'sketch_loss', '')
@@ -96,6 +96,7 @@ flags.DEFINE_integer("init_i_to", 1, "init i to")
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 5, 'maximal episode length for each trajactory')
 flags.DEFINE_integer('mem_length', 100, 'memory length for replay memory')
+flags.DEFINE_integer('action_num', 8, 'number of actions')
 flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 FLAGS = flags.FLAGS
@@ -144,7 +145,9 @@ def restore(ae):
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
-def select_action(rgb, vox):
+def select_action(rgb, vox, epsilon):
+
+    feed_dict = {'rgb_batch': rgb[None, ...], 'vox_batch': vox[None, ...]}
     pass
 
 def train(agent):
@@ -159,7 +162,9 @@ def train(agent):
     for i_idx in range(FLAGS.max_iter):
         state = senv.reset(True)
         actions = []
-        for e_idx in range(FLAGS.max_episode_length):
+
+        ## run simulations and get memories
+        for e_idx in range(FLAGS.max_episode_length-1):
             actions.append(np.random.randint(0,8))
             state, next_state, done, model = senv.step(actions[-1])
             if done:
@@ -167,9 +172,13 @@ def train(agent):
                 traj_state[0] += [next_state[0]]
                 traj_state[1] += [next_state[1]]
                 temp_traj = trajectData(traj_state, actions, model)
-                reply_mem.append(temp_traj)
-                #senv.reset(True)
-                #actions = []
+                replay_mem.append(temp_traj)
+
+        rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
+        feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
+            agent.action_batch:action_batch}
+        loss = agent.sess.run(agent.loss, feed_dict=feed_dict)
+        print 'loss {}'.format(loss)
 
 def test(agent):
     pass
