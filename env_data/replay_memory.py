@@ -112,7 +112,7 @@ class ReplayMemory():
         new_img = new_img * mask + np.ones_like(new_img, dtype=np.float32) * (1.0 - mask)
         new_img = sm.imresize(new_img, (self.FLAGS.resolution, self.FLAGS.resolution, 3))
         mask = sm.imresize(mask, (self.FLAGS.resolution, self.FLAGS.resolution), interp='nearest') 
-        return (new_img*255.).astype(np.uint8), mask[..., 0]
+        return (new_img/255.0).astype(np.float32), mask[..., 0]
 
     def read_invZ(self, azim, elev, model_id):
         invZ_name = 'invZ_{}_{}.npy'.format(int(azim), int(elev))
@@ -126,19 +126,27 @@ class ReplayMemory():
         elev_R = np.zeros((3,3), dtype=np.float32)
         azim_rad = np.deg2rad(azim)
         elev_rad = np.deg2rad(elev)
+        azim_R[2, 2] = 1
+        azim_R[0, 0] = np.cos(azim_rad)
+        azim_R[0, 1] = -np.sin(azim_rad)
+        azim_R[1, 0] = np.sin(azim_rad)
         azim_R[1, 1] = np.cos(azim_rad)
-        azim_R[1, 2] = -np.sin(azim_rad)
-        azim_R[2, 1] = np.sin(azim_rad)
-        azim_R[2, 2] = np.cos(azim_rad)
+        elev_R[1, 1] = 1
         elev_R[0, 0] = np.cos(elev_rad)
         elev_R[0, 2] = np.sin(elev_rad)
         elev_R[2, 0] = -np.sin(elev_rad)
         elev_R[2, 2] = np.cos(elev_rad)
+        swap_m = np.asarray([[0, 1, 0], [0, 0, 1], [-1, 0, 0]])
         R = np.zeros((3,4), dtype=np.float32)
-        R[0:3, 0:3] = np.matmul(elev_R, azim_R)
+        R[:, 0:3] = np.matmul(elev_R.T, azim_R.T)
+        R[:, 2] = -R[:, 2]
+        R[:, 0:3] = np.matmul(swap_m, R[:, 0:3])
         R[0, 3] = 2*np.cos(elev_rad)*np.cos(azim_rad)
         R[1, 3] = 2*np.cos(elev_rad)*np.sin(azim_rad)
         R[2, 3] = 2*np.sin(elev_rad)
+
+        R[:, 3] = -np.matmul(R[0:3, 0:3], R[:, 3])
+        #R[2, 3] = 2
 
         return R 
 
@@ -265,8 +273,8 @@ class ReplayMemory():
         return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
 
     def get_vox_pred(self, RGB_list, R_list, K_list, seq_idx):
-        feed_dict = {self.net.K: K_list[None, ...], self.net.Rcam: R_list[None, ...], 
-            self.net.ims: RGB_list_batch[None, ...]}
+        print RGB_list.shape
+        feed_dict = {self.net.K: K_list, self.net.Rcam: R_list[None, ...], self.net.ims: RGB_list[None, ...]}
         pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
 
         return pred_voxels[0, ...]
