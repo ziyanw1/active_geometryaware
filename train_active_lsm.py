@@ -101,6 +101,7 @@ flags.DEFINE_integer('burn_in_length', 10000, 'burn in length for replay memory'
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
+flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -150,10 +151,16 @@ def restore(ae):
 def select_action(agent, rgb, vox, epsilon):
     feed_dict = {agent.rgb_batch: rgb[None, ...], agent.vox_batch: vox[None, ...]}
     
-    if np.random.uniform(low=0.0, high=1.0) > epsilon:
-        action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
-    else:
-        return np.random.randint(low=0, high=FLAGS.action_num)
+    #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+    #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
+    #else:
+    #    return np.random.randint(low=0, high=FLAGS.action_num)
+    stuff = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
+    action_prob = stuff[0][0]
+    a_response = np.random.choice(action_prob, p=action_prob)
+
+    a_idx = np.argmax(action_prob == a_response)
+    return a_idx
 
 def train(agent):
     
@@ -190,7 +197,10 @@ def train(agent):
                 traj_state = state
                 traj_state[0] += [next_state[0]]
                 traj_state[1] += [next_state[1]]
-                temp_traj = trajectData(traj_state, actions, model_id)
+                rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
+                print rewards
+                sys.exit()
+                temp_traj = trajectData(traj_state, actions, rewards, model_id)
                 replay_mem.append(temp_traj)
                 break
 
@@ -208,20 +218,61 @@ def test(agent):
     pass
 
 def burn_in(senv, replay_mem):     
-    state, model = senv.reset(True)
-    actions = []
-    for i in range(FLAGS.max_episode_length*FLAGS.burn_in_length):
-        actions.append(np.random.randint(0,8))
-        state, next_state, done, model = senv.step(actions[-1])
-        if done:
-            traj_state = state
-            traj_state[0] += [next_state[0]]
-            traj_state[1] += [next_state[1]]
-            temp_traj = trajectData(traj_state, actions, model)
-            #print temp_traj.states, temp_traj.actions, temp_traj.model_id
-            replay_mem.append(temp_traj)
-            senv.reset(True)
-            actions = []
+    K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
+    K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
+    for i_idx in range(FLAGS.burn_in_length):
+        if i_idx % 5000 == 0 and i_idx != 0:
+            log_string('Burning in {}/{} sequences'.format(i, FLAGS.burn_in_length))
+        state, model_id = senv.reset(True)
+        actions = []
+        RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+        R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+        vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+            dtype=np.float32)
+
+        RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+        R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        ## run simulations and get memories
+        for e_idx in range(FLAGS.max_episode_length-1):
+            actions.append(np.random.randint(FLAGS.action_num))
+            state, next_state, done, model_id = senv.step(actions[-1])
+            RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            if done:
+                traj_state = state
+                traj_state[0] += [next_state[0]]
+                traj_state[1] += [next_state[1]]
+                rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
+                #print 'rewards: {}'.format(rewards)
+                temp_traj = trajectData(traj_state, actions, rewards, model_id)
+                replay_mem.append(temp_traj)
+                break
+
+            ## TODO: update vox_temp
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
+    #for i in range(FLAGS.max_episode_length*FLAGS.burn_in_length):
+    #    actions = []
+    #    RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+    #    R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+    #    vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+    #        dtype=np.float32)
+
+    #    epsilon = FLAGS.end_eps + (FLAGS.init_eps-FLAGS.end_eps)*i_idx / FLAGS.max_iter
+
+    #    RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+    #    R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+    #    actions.append(np.random.randint(0,8))
+    #    state, next_state, done, model = senv.step(actions[-1])
+    #    if done:
+    #        traj_state = state
+    #        traj_state[0] += [next_state[0]]
+    #        traj_state[1] += [next_state[1]]
+    #        temp_traj = trajectData(traj_state, actions, model)
+    #        #print temp_traj.states, temp_traj.actions, temp_traj.model_id
+    #        replay_mem.append(temp_traj)
+    #        senv.reset(True)
+    #        actions = []
 
          
 if __name__ == "__main__":
