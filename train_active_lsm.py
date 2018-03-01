@@ -61,7 +61,7 @@ flags.DEFINE_integer('voxel_resolution', 32, '')
 flags.DEFINE_string('opt_step_name', 'opt_step', '')
 flags.DEFINE_string('loss_name', 'sketch_loss', '')
 flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
-flags.DEFINE_float('learning_rate', 1e-4, 'Initial learning rate [default: 0.001]') #used to be 3e-5
+flags.DEFINE_float('learning_rate', 1e-5, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
 flags.DEFINE_string('optimizer', 'adam', 'adam or momentum [default: adam]')
 flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 200000]')
@@ -95,9 +95,9 @@ flags.DEFINE_integer("init_i_to", 1, "init i to")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 5, 'maximal episode length for each trajactory')
-flags.DEFINE_integer('mem_length', 100, 'memory length for replay memory')
+flags.DEFINE_integer('mem_length', 10000000, 'memory length for replay memory')
 flags.DEFINE_integer('action_num', 8, 'number of actions')
-flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
+flags.DEFINE_integer('burn_in_length', 10000, 'burn in length for replay memory')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
@@ -152,7 +152,7 @@ def select_action(agent, rgb, vox, epsilon):
     
     if np.random.uniform(low=0.0, high=1.0) > epsilon:
         action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
-    else
+    else:
         return np.random.randint(low=0, high=FLAGS.action_num)
 
 def train(agent):
@@ -177,11 +177,11 @@ def train(agent):
 
         epsilon = FLAGS.end_eps + (FLAGS.init_eps-FLAGS.end_eps)*i_idx / FLAGS.max_iter
 
-        RGB_temp_list[0, ...] = replay_mem.read_png_to_uint8(state[0,0], state[1,0], model_id)
-        R_list[0, ...] = replay_mem.get_R(state[0,0], state[1,0])
+        RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+        R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = select_action(agent, state_temp_list[e_idx], vox_temp, epsilon) 
+            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, epsilon) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
@@ -196,7 +196,7 @@ def train(agent):
 
             ## TODO: update vox_temp
             vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = vox_temp_list[e_idx+1, ...]
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
 
         rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,

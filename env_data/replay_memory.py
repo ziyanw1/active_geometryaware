@@ -273,8 +273,9 @@ class ReplayMemory():
         return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
 
     def get_vox_pred(self, RGB_list, R_list, K_list, seq_idx):
-        print RGB_list.shape
-        feed_dict = {self.net.K: K_list, self.net.Rcam: R_list[None, ...], self.net.ims: RGB_list[None, ...]}
+        feed_dict = {self.net.K: np.tile(K_list, (self.FLAGS.batch_size, 1, 1, 1)), 
+            self.net.Rcam: np.tile(R_list[None, ...], (self.FLAGS.batch_size, 1, 1, 1)), 
+            self.net.ims: np.tile(RGB_list[None, ...], (self.FLAGS.batch_size, 1, 1, 1, 1))}
         pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
 
         return pred_voxels[0, ...]
