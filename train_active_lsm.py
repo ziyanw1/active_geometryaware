@@ -5,6 +5,7 @@
 # scp jerrypiglet@128.237.133.169:Bitsync/3dv2017_PBA/train_ae_2_reg_lmdb.py . && scp -r jerrypiglet@128.237.133.169:Bitsync/3dv2017_PBA/models . && vglrun python train_ae_2_reg_lmdb.py --task_name REG_finalAE_FASTconstantLr_bnNObn_NOtrans_car24576_bb10__bb8_0707 --num_point=24576 --if_constantLr=True --if_deconv=True --if_transform=False --if_en_bn=True --if_gen_bn=False --cat_name='car' --batch_size=20 --learning_rate=1e-5 --ae_file '/newfoundland/rz1/log/finalAE_FASTconstantLr_bnNObn_NOtrans_car24576__bb10'
 
 import argparse
+import time
 import math
 import h5py
 import numpy as np
@@ -148,7 +149,7 @@ def restore(ae):
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
-def select_action(agent, rgb, vox, epsilon):
+def select_action(agent, rgb, vox):
     feed_dict = {agent.rgb_batch: rgb[None, ...], agent.vox_batch: vox[None, ...]}
     
     #if np.random.uniform(low=0.0, high=1.0) > epsilon:
@@ -167,11 +168,11 @@ def train(agent):
     senv = ShapeNetEnv(FLAGS)
     replay_mem = ReplayMemory(FLAGS)
 
-    log_string('====== Starting burning in memories ======')
-    burn_in(senv, replay_mem)
-    log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
+    #log_string('====== Starting burning in memories ======')
+    #burn_in(senv, replay_mem)
+    #log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
 
-    epsilon = FLAGS.init_eps
+    #epsilon = FLAGS.init_eps
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
     for i_idx in range(FLAGS.max_iter):
@@ -182,13 +183,11 @@ def train(agent):
         vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
             dtype=np.float32)
 
-        epsilon = FLAGS.end_eps + (FLAGS.init_eps-FLAGS.end_eps)*i_idx / FLAGS.max_iter
-
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, epsilon) 
+            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
@@ -198,8 +197,6 @@ def train(agent):
                 traj_state[0] += [next_state[0]]
                 traj_state[1] += [next_state[1]]
                 rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
-                print rewards
-                sys.exit()
                 temp_traj = trajectData(traj_state, actions, rewards, model_id)
                 replay_mem.append(temp_traj)
                 break
@@ -209,10 +206,12 @@ def train(agent):
             vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
 
         rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
+        #print 'reward_batch: {}'.format(reward_batch)
+        #print 'rewards: {}'.format(rewards)
         feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
             agent.action_batch:action_batch}
         loss = agent.sess.run([agent.loss], feed_dict=feed_dict)
-        print 'loss {}'.format(loss)
+        log_string('+++++Iteration: {}, loss: {}, mean_reward: {}+++++'.format(i_idx, loss, np.mean(rewards)))
 
 def test(agent):
     pass
@@ -220,9 +219,12 @@ def test(agent):
 def burn_in(senv, replay_mem):     
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
+    tic = time.time()
     for i_idx in range(FLAGS.burn_in_length):
-        if i_idx % 5000 == 0 and i_idx != 0:
-            log_string('Burning in {}/{} sequences'.format(i, FLAGS.burn_in_length))
+        if i_idx % 10 == 0 and i_idx != 0:
+            toc = time.time()
+            log_string('Burning in {}/{} sequences, time taken: {}s'.format(i_idx, FLAGS.burn_in_length, toc-tic))
+            tic = time.time()
         state, model_id = senv.reset(True)
         actions = []
         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)

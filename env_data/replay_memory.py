@@ -58,6 +58,7 @@ class ReplayMemory():
         #self.restorer = tf.train.Saver(var_list=vars_restore)
         #self.restorer.restore(self.sess, os.path.join(log_dir, ckpt))
         self.get_vlsm()
+        #self.get_vlsm_mini()
 
     def get_vlsm(self):
         #SAMPLE_DIR = os.path.join('data', 'shapenet_sample')
@@ -67,7 +68,7 @@ class ReplayMemory():
             args = json.load(f)
             args = Bunch(args)
         
-        bs, ims_per_model = self.FLAGS.batch_size, self.max_episode_length
+        bs, ims_per_model = 1, self.max_episode_length
         
         ckpt = 'mvnet-100000'
         net = MVNet(vmin=-0.5, vmax=0.5, vox_bs=bs,
@@ -79,6 +80,28 @@ class ReplayMemory():
         vars_restore = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='MVNet')
         saver = tf.train.Saver(var_list=vars_restore)
         saver.restore(self.sess, os.path.join(log_dir, ckpt))
+    
+    #def get_vlsm_mini(self):
+    #    #SAMPLE_DIR = os.path.join('data', 'shapenet_sample')
+    #    #im_dir = os.path.join(SAMPLE_DIR, 'renders')
+    #    log_dir = os.path.join('lsm/models_lsm_v1/vlsm-release/train')
+    #    with open(os.path.join(log_dir, 'args.json'), 'r') as f:
+    #        args = json.load(f)
+    #        args = Bunch(args)
+    #    
+    #    bs, ims_per_model = 1, self.max_episode_length
+    #    
+    #    ckpt = 'mvnet-100000'
+    #    net = MVNet(vmin=-0.5, vmax=0.5, vox_bs=bs,
+    #        im_bs=ims_per_model, grid_size=args.nvox,
+    #        im_h=args.im_h, im_w=args.im_w,
+    #        norm=args.norm, mode="TEST")
+    #    
+    #    self.net_mini = model_vlsm(net, im_nets[args.im_net], grid_nets[args.grid_net], conv_rnns[args.rnn],
+    #        scope_name='MVNet_mini')
+    #    vars_restore = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='MVNet_mini')
+    #    saver = tf.train.Saver(var_list=vars_restore)
+    #    saver.restore(self.sess, os.path.join(log_dir, ckpt))
 
     def append(self, data_list):
         # data_list: azim/elev list(0:max_episode_length), model_id
@@ -152,11 +175,12 @@ class ReplayMemory():
 
     def calu_reward(self, vox_curr_batch, vox_next_batch, vox_gt_batch):
         batch_size = vox_gt_batch.shape[0]
+        #print 'calu r batch_size: {}'.format(batch_size)
         reward_batch = np.ones((batch_size, ), dtype=np.float32)
 
-        print vox_curr_batch.shape
-        print vox_next_batch.shape
-        print vox_gt_batch.shape
+        #print vox_curr_batch.shape
+        #print vox_next_batch.shape
+        #print vox_gt_batch.shape
 
         if self.FLAGS.reward_type == 'IoU':
             calu_r_func = self.calu_IoU_reward
@@ -185,7 +209,7 @@ class ReplayMemory():
         IoU_curr = calu_IoU(vox_curr, vox_gt)
         IoU_next = calu_IoU(vox_next, vox_gt)
 
-        return IoU_next - IoU_curr
+        return (IoU_next - IoU_curr)*100
 
     def calu_IG_reward(self, vox_curr, vox_next, vox_gt):
 
@@ -229,7 +253,7 @@ class ReplayMemory():
             higher_bound = min(self.count, self.mem_length)
             rand_idx = np.random.randint(0, higher_bound)
             data_ = self.mem_list[rand_idx]
-            print data_.states[0]
+            #print data_.states[0]
 
             azim_batch[b_idx, ...] = np.asarray(data_.states[0])
             elev_batch[b_idx, ...] = np.asarray(data_.states[1])
@@ -258,10 +282,16 @@ class ReplayMemory():
         #pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
         #vox_current_batch = pred_voxels
         
-        feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch}
-        pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
-        vox_curr_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list, ...], axis=-1)
-        vox_next_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list+1, ...], axis=-1)
+        pred_voxels = [] 
+        for K_single, R_single, RGB_single in zip(K_batch, R_batch, RGB_list_batch):
+            feed_dict = {self.net.K: K_single[None, ...], self.net.Rcam: R_single[None, ...], self.net.ims:
+                RGB_single[None, ...]}
+            pred_voxels_temp = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+            pred_voxels.append(pred_voxels_temp)
+        pred_voxels = np.squeeze(np.asarray(pred_voxels))
+        #vox_curr_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list, ...], axis=-1)
+        vox_curr_batch = pred_voxels[range(batch_size), current_idx_list, ...]
+        vox_next_batch = pred_voxels[range(batch_size), current_idx_list+1, ...]
 
         RGB_batch = np.asarray([RGB_list_batch[bi, li, ...] for bi, li in zip(range(batch_size), current_idx_list)],
             dtype=np.float32)
@@ -273,10 +303,23 @@ class ReplayMemory():
         return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
 
     def get_vox_pred(self, RGB_list, R_list, K_list, seq_idx):
-        feed_dict = {self.net.K: np.tile(K_list, (self.FLAGS.batch_size, 1, 1, 1)), 
-            self.net.Rcam: np.tile(R_list[None, ...], (self.FLAGS.batch_size, 1, 1, 1)), 
-            self.net.ims: np.tile(RGB_list[None, ...], (self.FLAGS.batch_size, 1, 1, 1, 1))}
+        feed_dict = {self.net.K: K_list, self.net.Rcam: R_list[None, ...], 
+            self.net.ims: RGB_list[None, ...]}
         pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
 
         return pred_voxels[0, ...]
         
+    def get_seq_rewards(self, RGB_list, R_list, K_list, model_id):
+            
+        voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+        vox_gt = self.read_vox(voxel_name)
+        feed_dict = {self.net.K: K_list, self.net.Rcam: R_list[None, ...], 
+            self.net.ims: RGB_list[None, ...]}
+        pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+        rewards = []
+        pred_voxels = np.squeeze(pred_voxels[0])
+        for i in range(1, pred_voxels.shape[0]):
+            r = self.calu_reward(pred_voxels[None, i-1, ...], pred_voxels[None, i, ...], vox_gt[None, ...])
+            rewards.append(r[0])
+
+        return rewards
