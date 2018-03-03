@@ -123,6 +123,8 @@ class ReplayMemory():
         vox_factor = self.voxel_resolution * 1.0 / 128
         vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
 
+        vox_model_zoom = np.transpose(vox_model_zoom, (0,2,1))
+
         return vox_model_zoom
 
     def read_png_to_uint8(self, azim, elev, model_id):
@@ -248,6 +250,7 @@ class ReplayMemory():
         #state_mask_current = np.ones_like(RGB_list_batch, dtype=np.float32)
         #state_mask_next = np.ones_like(RGB_list_batch, dtype=np.float32)
         current_idx_list = np.zeros((batch_size,), dtype=np.uint8)
+        reward_list_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
 
         for b_idx in range(batch_size):
             higher_bound = min(self.count, self.mem_length)
@@ -258,6 +261,7 @@ class ReplayMemory():
             azim_batch[b_idx, ...] = np.asarray(data_.states[0])
             elev_batch[b_idx, ...] = np.asarray(data_.states[1])
             actions_batch[b_idx, ...] = np.asarray(data_.actions)
+            reward_list_batch[b_idx, ...] = np.asarray(data_.rewards)
             model_id = data_.model_id
             current_idx = np.random.randint(0, self.max_episode_length-1)
             current_idx_list[b_idx] = current_idx
@@ -296,11 +300,24 @@ class ReplayMemory():
         RGB_batch = np.asarray([RGB_list_batch[bi, li, ...] for bi, li in zip(range(batch_size), current_idx_list)],
             dtype=np.float32)
 
-        reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
+        ## instance reward
+        #reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
+        ## cumulated reward
+        reward_batch = self.get_decay_reward(reward_list_batch, current_idx_list)
         action_response_batch = actions_batch[range(batch_size), current_idx_list]
 
         #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
         return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
+
+    def get_decay_reward(self, reward_list_batch, current_idx_list):
+        gamma = self.FLAGS.gamma
+
+        reward_batch = np.zeros((self.FLAGS.batch_size,), dtype=np.float32)
+        for b_idx in range(self.FLAGS.batch_size):
+            for l_i in range(self.max_episode_length-2, current_idx_list[b_idx]-2, -1):
+                reward_batch[b_idx] += gamma*reward_batch[b_idx] + reward_list_batch[b_idx, l_i]
+
+        return reward_batch
 
     def get_vox_pred(self, RGB_list, R_list, K_list, seq_idx):
         feed_dict = {self.net.K: K_list, self.net.Rcam: R_list[None, ...], 
