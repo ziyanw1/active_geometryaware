@@ -49,6 +49,8 @@ class ActiveAgent(object):
         self.sess = tf.Session(config=config)
         self.sess.run(tf.global_variables_initializer())
 
+        self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
+
     def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False, scope_name='dqn_two_stream'):
         with tf.variable_scope(scope_name) as scope:
             if reuse:
@@ -124,3 +126,6 @@ class ActiveAgent(object):
     def _create_summary(self):
         self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
         self.summary_loss_train = tf.summary.scalar('train/loss', self.loss)
+
+        self.merge_train_list = [self.summary_learning_rate, self.summary_loss_train]
+        self.merged_train = tf.summary.merge(self.merge_train_list)

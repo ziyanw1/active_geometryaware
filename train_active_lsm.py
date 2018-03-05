@@ -46,11 +46,11 @@ flags.DEFINE_string('model_file', 'pcd_ae_1_lmdb', 'Model name')
 flags.DEFINE_string('cat_name', 'airplane', 'Category name')
 flags.DEFINE_string('category', '03797390', 'category Index')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
-flags.DEFINE_string('LOG_DIR', './log/', 'Log dir [default: log]')
+flags.DEFINE_string('LOG_DIR', './log_agent/', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
 flags.DEFINE_string('data_file', 'rgb2depth_single_0212', 'data file')
 #flags.DEFINE_string('CHECKPOINT_DIR', '/newfoundland/rz1/log', 'Log dir [default: log]')
-flags.DEFINE_string('CHECKPOINT_DIR', './log', 'Log dir [default: log]')
+flags.DEFINE_string('CHECKPOINT_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
 flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [default: tmp]')
 flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
@@ -85,7 +85,7 @@ flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
-flags.DEFINE_integer("save_every_step", 10000, "save every ? step")
+flags.DEFINE_integer("save_every_step", 10, "save every ? step")
 flags.DEFINE_boolean("if_test", True, "if test")
 flags.DEFINE_integer("test_every_step", 5000, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
@@ -116,8 +116,8 @@ FLAGS.BN_DECAY_DECAY_STEP = float(FLAGS.decay_step)
 FLAGS.BN_DECAY_CLIP = 0.99
 
 def log_string(out_str):
-    #FLAGS.LOG_FOUT.write(out_str+'\n')
-    #FLAGS.LOG_FOUT.flush()
+    FLAGS.LOG_FOUT.write(out_str+'\n')
+    FLAGS.LOG_FOUT.flush()
     print(out_str)
 
 def prepare_plot():
@@ -210,8 +210,13 @@ def train(agent):
         #print 'rewards: {}'.format(rewards)
         feed_dict = {agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
             agent.action_batch:action_batch}
-        loss = agent.sess.run([agent.loss], feed_dict=feed_dict)
+        merge_summary, loss = agent.sess.run([agent.merged_train, agent.loss], feed_dict=feed_dict)
         log_string('+++++Iteration: {}, loss: {}, mean_reward: {}+++++'.format(i_idx, loss, np.mean(rewards)))
+        tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
+        agent.train_writer.add_summary(merge_summary, i_idx)
+
+        if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
+            save(agent, i_idx, i_idx, i_idx) 
 
 def test(agent):
     pass
@@ -282,38 +287,38 @@ if __name__ == "__main__":
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
    
     ####### log writing
-    #FLAGS.LOG_DIR = FLAGS.LOG_DIR + '/' + FLAGS.task_name
-    ##FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
-    ##tf_util.mkdir(FLAGS.CHECKPOINT_DIR)
-    #if not os.path.exists(FLAGS.LOG_DIR):
-    #    os.mkdir(FLAGS.LOG_DIR)
-    #    print tf_util.toYellow('===== Created %s.'%FLAGS.LOG_DIR)
-    #else:
-    #    # os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
-    #    if not(FLAGS.restore):
-    #        
-    #        def check_delete():
-    #            if FLAGS.force_delete:
-    #                return True
-    #            delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
-    #            return delete_key == 'y' or delete_key == ''
-    #        
-    #        if check_delete():
-    #            os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
-    #            #os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
-    #            print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR)
-    #        else:
-    #            print tf_util.toRed('Overwrite.')
-    #    else:
-    #        print tf_util.toRed('To Be Restored...')
+    FLAGS.LOG_DIR = FLAGS.LOG_DIR + '/' + FLAGS.task_name
+    #FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
+    #tf_util.mkdir(FLAGS.CHECKPOINT_DIR)
+    if not os.path.exists(FLAGS.LOG_DIR):
+        os.mkdir(FLAGS.LOG_DIR)
+        print tf_util.toYellow('===== Created %s.'%FLAGS.LOG_DIR)
+    else:
+        # os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
+        if not(FLAGS.restore):
+            
+            def check_delete():
+                if FLAGS.force_delete:
+                    return True
+                delete_key = raw_input(tf_util.toRed('===== %s exists. Delete? [y (or enter)/N] '%FLAGS.LOG_DIR))
+                return delete_key == 'y' or delete_key == ''
+            
+            if check_delete():
+                os.system('rm -rf %s/*'%FLAGS.LOG_DIR)
+                #os.system('rm -rf %s/*'%FLAGS.CHECKPOINT_DIR)
+                print tf_util.toRed('Deleted.'+FLAGS.LOG_DIR)
+            else:
+                print tf_util.toRed('Overwrite.')
+        else:
+            print tf_util.toRed('To Be Restored...')
 
     #tf_util.mkdir(os.path.join(FLAGS.LOG_DIR, 'saved_images'))
     ##os.system('cp %s %s' % (MODEL_FILE, FLAGS.LOG_DIR)) # bkp of model def
     ##os.system('cp train.py %s' % (FLAGS.LOG_DIR)) # bkp of train procedure
 
 
-    #FLAGS.LOG_FOUT = open(os.path.join(FLAGS.LOG_DIR, 'log_train.txt'), 'w')
-    #FLAGS.LOG_FOUT.write(str(FLAGS)+'\n')
+    FLAGS.LOG_FOUT = open(os.path.join(FLAGS.LOG_DIR, 'log_train.txt'), 'w')
+    FLAGS.LOG_FOUT.write(str(FLAGS)+'\n')
 
     ##prepare_plot()
     #log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))
@@ -326,4 +331,4 @@ if __name__ == "__main__":
     # z_list = []
     # test_demo_render_z(ae, z_list)
 
-    #FLAGS.LOG_FOUT.close()
+    FLAGS.LOG_FOUT.close()
