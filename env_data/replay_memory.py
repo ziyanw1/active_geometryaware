@@ -189,7 +189,7 @@ class ReplayMemory():
         elif self.FLAGS.reward_type == 'IG':
             calu_r_func = self.calu_IG_reward
 
-        for i in range(vox_gt_batch.shape[0]):
+        for i in range(batch_size):
             reward_batch[i] = calu_r_func(vox_curr_batch[i], vox_next_batch[i], vox_gt_batch[i])
 
         return reward_batch
@@ -212,12 +212,20 @@ class ReplayMemory():
         IoU_next = calu_IoU(vox_next, vox_gt)
 
         return (IoU_next - IoU_curr)*100
+    
+    def calu_IoU(self, a, b):
+        inter = a*b
+        sum_inter = np.sum(inter[:])
+        union = a + b
+        union[union > 0.5] = 1
+        sum_union = np.sum(union[:])
+        return sum_inter*1.0/sum_union
 
     def calu_IG_reward(self, vox_curr, vox_next, vox_gt):
 
         def calu_cross_entropy(a, b):
-            a[b == 0] = 1 - a[b == 0] 
-            a += 1e-5
+            a[np.argwhere(b == 0)] = 1 - a[np.argwhere(b == 0)] 
+            a[np.argwhere(a == 0)] += 1e-5
 
             cross_entropy = np.log(a)
             return np.sum(cross_entropy[:])
@@ -228,7 +236,14 @@ class ReplayMemory():
         def sigmoid(a):
             return 1.0 / (1 + np.exp(-a))
 
-        return cross_entropy_next - cross_entropy_curr
+        return (cross_entropy_next - cross_entropy_curr)*1e-5
+        
+    def calu_cross_entropy(self, a, b):
+        a[b == 0] = 1 - a[b == 0] 
+        a += 1e-5
+
+        cross_entropy = np.log(a)
+        return np.sum(cross_entropy[:])
 
     def get_batch(self, batch_size=32):
         
@@ -338,5 +353,9 @@ class ReplayMemory():
         for i in range(1, pred_voxels.shape[0]):
             r = self.calu_reward(pred_voxels[None, i-1, ...], pred_voxels[None, i, ...], vox_gt[None, ...])
             rewards.append(r[0])
+
+        ### extract mean
+        #rewards = np.asarray(rewards)
+        #rewards -= np.mean(rewards)
 
         return rewards

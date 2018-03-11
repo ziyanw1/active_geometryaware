@@ -53,6 +53,7 @@ class ShapeNetEnv():
         self.current_elev = 30
         self.prev_azims = []
         self.prev_elevs = []
+        self.test_count = 0
 
     def reset(self, is_training):
         self.step_count = 0
