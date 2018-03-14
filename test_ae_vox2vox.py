@@ -280,7 +280,7 @@ def test(ae):
         vox_name = os.path.join(voxel_dir, '{}/{}/model.binvox'.format(category_name, model_id)) 
         vox_model = read_bv(vox_name)
         #vox_model_zoom = ndimg.zoom(vox_model, FLAGS.vox_factor, order=0) # nearest neighbor interpolation
-        vox_model_zoom = downsample(vox_model, int(1/vox_factor))
+        vox_model_zoom = downsample(vox_model, int(1/FLAGS.vox_factor))
         feed_dict = {ae.is_training: False, ae.voxel_batch: vox_model_zoom[None, ..., None]}
 
         ops_to_run = [ae.counter, ae.recon_loss, ae.preds]
