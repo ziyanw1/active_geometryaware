@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import os
 import termcolor
+from scipy import ndimage
 
 # create directory
 def mkdir(path):
@@ -46,4 +47,32 @@ def saveModel(p,sess,saver,name,i=None,interm=False):
 	else:
 		saver.save(sess,"models_{2}/{0}_it{1}k_{3}.ckpt".format(p.model,(i+1)//1000,p.group,name))
 
+def downsample(voxels, step, method='max'):
+    """
+    downsample a voxels matrix by a factor of step. 
+    downsample method options: max/mean 
+    same as a pooling
+    """
+    assert step > 0
+    assert voxels.ndim == 3 or voxels.ndim == 4
+    assert method in ('max', 'mean')
+    if step == 1:
+        return voxels
 
+    if voxels.ndim == 3:
+        sx, sy, sz = voxels.shape[-3:]
+        X, Y, Z = np.ogrid[0:sx, 0:sy, 0:sz]
+        regions = sz/step * sy/step * (X/step) + sz/step * (Y/step) + Z/step
+        if method == 'max':
+            res = ndimage.maximum(voxels, labels=regions, index=np.arange(regions.max() + 1))
+        elif method == 'mean':
+            res = ndimage.mean(voxels, labels=regions, index=np.arange(regions.max() + 1))
+        res.shape = (sx/step, sy/step, sz/step)
+        return res
+    else:
+        res0 = downsample(voxels[0], step, method)
+        res = np.zeros((voxels.shape[0],) + res0.shape)
+        res[0] = res0
+        for ind in xrange(1, voxels.shape[0]):
+            res[ind] = downsample(voxels[ind], step, method)
+        return res

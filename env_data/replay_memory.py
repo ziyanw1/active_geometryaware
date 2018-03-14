@@ -13,6 +13,7 @@ from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
 
 sys.path.append(os.path.join('utils'))
+from util import downsample
 import binvox_rw
 
 cat_name = {
@@ -116,14 +117,14 @@ class ReplayMemory():
         with open(fn, 'rb') as f:
             model = binvox_rw.read_as_3d_array(f)
         data = np.float32(model.data)
+        data = np.transpose(data, (0,2,1))
         return data
 
     def read_vox(self, vox_name): 
         vox_model = self.read_bv(vox_name) 
         vox_factor = self.voxel_resolution * 1.0 / 128
-        vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
-
-        vox_model_zoom = np.transpose(vox_model_zoom, (0,2,1))
+        #vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
+        vox_model_zoom = downsample(vox_model, int(1/vox_factor))
 
         return vox_model_zoom
 
@@ -239,8 +240,8 @@ class ReplayMemory():
         return (cross_entropy_next - cross_entropy_curr)*1e-5
         
     def calu_cross_entropy(self, a, b):
-        a[b == 0] = 1 - a[b == 0] 
-        a += 1e-5
+        a[np.argwhere(b == 0)] = 1 - a[np.argwhere(b == 0)] 
+        a[np.argwhere(a == 0)] += 1e-5
 
         cross_entropy = np.log(a)
         return np.sum(cross_entropy[:])

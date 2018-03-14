@@ -29,6 +29,7 @@ sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, '../models'))
 sys.path.append(os.path.join(BASE_DIR, '../utils'))
 
+from util import downsample
 import binvox_rw
 
 #global FLAGS
@@ -117,7 +118,8 @@ class lmdb_writer(DataFlow):
             vox_name = os.path.join(voxel_dir, '{}/{}/model.binvox'.format(category_name, model_id)) 
             mat_name = render_out_path + '/%s_tw.mat'%model_id
             vox_model = read_bv(vox_name)
-            vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
+            #vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
+            vox_model_zoom = downsample(vox_model, int(1/vox_factor))
 
             #try:
             #    #plydata = PlyData.read(ply_name)
