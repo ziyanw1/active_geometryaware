@@ -314,5 +314,10 @@ class AE_vox2vox(object):
         self.summary_train = [self.summary_loss_train, self.summary_learning_rate]
         self.summary_test = [self.summary_loss_test]
 
+        if self.FLAGS.use_gan:
+            self.summary_Dloss_train = tf.summary.scalar('train/D_loss', self.D_loss)
+            self.summary_Gloss_train = tf.summary.scalar('train/G_loss', self.G_loss)
+            self.summary_train += [self.summary_Dloss_train, self.summary_Gloss_train]
+
         self.merge_train = tf.summary.merge(self.summary_train)
         self.merge_test = tf.summary.merge(self.summary_test)
