@@ -76,6 +76,9 @@ flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 # log and drawing (blue)
+flags.DEFINE_boolean("is_training", True, 'training flag')
+flags.DEFINE_string('category_name', '03001627', 'Name for object category')
+flags.DEFINE_float('vox_factor', 0.25, 'voxel scale factor [default: 0.25]')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
@@ -87,6 +90,7 @@ flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
 flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
 flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
+flags.DEFINE_integer("test_iter", 2, "init i to")
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -122,8 +126,7 @@ def save(ae, step, epoch, batch):
     if not os.path.exists(ckpt_dir):
         os.mkdir(ckpt_dir)
     saved_checkpoint = ae.saver.save(ae.sess, \
-        os.path.join(ckpt_dir, 'step%d-epoch%d-batch%d.ckpt' % (step, epoch, batch)), \
-        global_step=step)
+        os.path.join(ckpt_dir, 'model.ckpt'), global_step=step)
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
 def restore(ae):
@@ -132,6 +135,13 @@ def restore(ae):
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
     ae.restorer.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
+
+def restore_from_iter(ae, iter):
+    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    ckpt_path = os.path.join(restore_path, 'model.ckpt-{0}'.format(iter))
+    print(tf_util.toYellow("----#-> Model restoring from: {} using {} iterations...".format(restore_path, iter)))
+    ae.saver.restore(ae.sess, ckpt_path)
+    print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
 def train(ae):
 
@@ -180,7 +190,7 @@ def train(ae):
                 save(ae, i, i, i)
 
             if i%FLAGS.test_every_step == 0:
-                test_losses = test(ae)  
+                test_losses = evaluate(ae)  
                 for key, value in test_losses.iteritems():
                     tf_util.save_scalar(i, 'test/'+key, value, ae.train_writer)
 
@@ -201,23 +211,88 @@ def train(ae):
     ae.sess.close()
 
 
+def evaluate(ae):
+    
+    test_idx = 0
+    log_string(tf_util.toGreen('=============Testing============='))
+    recon_losses = []
+    IoUs = []
+
+    #try:
+    #    while not ae.coord.should_stop():
+            #ae.sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
+    for test_idx in range(100):
+        tic = time.time()
+        feed_dict = {ae.is_training: False, ae.data_loader.is_training: False}
+
+        ops_to_run = [ae.counter, ae.recon_loss, ae.preds, ae.voxel_batch]
+
+        stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
+        step, recon_loss, preds, voxel_batch = stuff
+        toc = time.time()
+
+        recon_losses.append(recon_loss)
+        def compute_IoU(a, b):
+            a[a >= 0.5] = 1
+            a[a < 0.5] = 0
+            inter = a*b
+            sum_inter = np.sum(inter[:])
+            union = a + b
+            union[union > 0.5] = 1
+            sum_union = np.sum(union[:])
+            return sum_inter*1.0/sum_union
+
+        preds = np.squeeze(preds)
+        voxel_batch = np.squeeze(voxel_batch)
+
+        for pred, vox_gt in zip(preds, voxel_batch):
+            iou = compute_IoU(pred, vox_gt)
+            IoUs.append(iou)
+
+        #log_string('Iteration: {} time {}, loss: {}, depth_recon_loss: {}, sn_recon_loss {}, mask_cls_loss {}'.format(i, \
+        #    toc-tic, loss, depth_recon_loss, sn_recon_loss, mask_cls_loss))
+
+        #test_idx += 1
+
+    log_string(tf_util.toGreen('===========Done testing==========='))
+    toc = time.time()
+    mean_recon_loss = np.mean(np.asarray(recon_losses))
+    mean_IoU = np.mean(np.asarray(IoUs))
+    log_string(tf_util.toRed('Test time {}s, mean recon loss: {}, mean IoU: {}.'.format(\
+        toc-tic, mean_recon_loss, mean_IoU)))
+
+    losses = {'loss_recon_loss': mean_recon_loss, 'mean_IoU': mean_IoU}
+
+    return losses
+                
 def test(ae):
     
     test_idx = 0
     log_string(tf_util.toGreen('=============Testing============='))
     recon_losses = []
+    IoUs = []
+    size_test = int(np.load(os.path.join(FLAGS.data_path, FLAGS.data_file+'_test.npy')))
 
     #try:
     #    while not ae.coord.should_stop():
             #ae.sess.run(ae.assign_i_op, feed_dict={ae.set_i_to_pl: i})
-    for test_idx in range(1500):
+
+    from data.write_tfrecords_vox import get_models, read_bv
+    splits = ['test']        
+    category_name = FLAGS.category_name
+    model_ids = get_models(category_name, splits = splits)
+    voxel_dir = './voxels'
+    for model_id in range(model_ids):
         tic = time.time()
+        vox_name = os.path.join(voxel_dir, '{}/{}/model.binvox'.format(category_name, model_id)) 
+        vox_model = read_bv(vox_name)
+        vox_model_zoom = ndimg.zoom(vox_model, FLAGS.vox_factor, order=0) # nearest neighbor interpolation
         feed_dict = {ae.is_training: False, ae.data_loader.is_training: False}
 
-        ops_to_run = [ae.counter, ae.recon_loss]
+        ops_to_run = [ae.counter, ae.recon_loss, ae.preds]
 
         stuff = ae.sess.run(ops_to_run, feed_dict = feed_dict)
-        step, recon_loss = stuff
+        step, recon_loss, preds = stuff
         toc = time.time()
 
         recon_losses.append(recon_loss)
@@ -229,9 +304,6 @@ def test(ae):
 
     log_string(tf_util.toGreen('===========Done testing==========='))
     toc = time.time()
-    mean_depth_loss = np.mean(np.asarray(depth_losses))
-    mean_sn_loss = np.mean(np.asarray(sn_losses))
-    mean_mask_loss = np.mean(np.asarray(mask_losses))
     mean_recon_loss = np.mean(np.asarray(recon_losses))
     log_string(tf_util.toRed('Test time {}s, recon loss: {}.'.format(\
         toc-tic, mean_recon_loss)))
@@ -239,7 +311,6 @@ def test(ae):
     losses = {'loss_depth_recon': mean_recon_loss}
 
     return losses
-                
 
             #if i%FLAGS.vis_every_step == 0:
             #    v.process(vis, 'train', i)
@@ -270,6 +341,14 @@ if __name__ == "__main__":
     FLAGS.LOG_DIR = FLAGS.LOG_DIR + '/' + FLAGS.task_name
     #FLAGS.CHECKPOINT_DIR = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
     #tf_util.mkdir(FLAGS.CHECKPOINT_DIR)
+    if not FLAGS.is_training:
+        FLAGS.batch_size = 1
+        ae = AE_vox2vox(FLAGS)
+        restore_from_iter(ae, FLAGS.test_iter) 
+        test(ae, FLAGS.test_iter)
+
+        sys.exit()
+    
     if not os.path.exists(FLAGS.LOG_DIR):
         os.mkdir(FLAGS.LOG_DIR)
         print tf_util.toYellow('===== Created %s.'%FLAGS.LOG_DIR)
