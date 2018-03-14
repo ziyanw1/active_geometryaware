@@ -66,7 +66,8 @@ categories = [
     # "04379243",
     # "04401088",
     # "04530566",
-    # "02958343" #car
+    # "02958343", #car
+    # "03797390" #cup
 ]
 cat_name = {
     "02691156" : "airplane",
@@ -84,9 +85,9 @@ cat_name = {
     "02958343" : "car"
 }
 
-azim_all = np.linspace(0, 360, 9)
+azim_all = np.linspace(0, 360, 37)
 azim_all = azim_all[0:-1]
-elev_all = np.linspace(-30, 30, 5)
+elev_all = np.linspace(10, 60, 6)
 VIEWS = len(azim_all)*len(elev_all)
 
 voxel_dir = '../voxels' 
@@ -95,6 +96,7 @@ def read_bv(fn):
     with open(fn, 'rb') as f:
         model = binvox_rw.read_as_3d_array(f)
     data = np.float32(model.data)
+    data = np.transpose(data, (0,2,1))
     return data
 
 class lmdb_writer(DataFlow):
@@ -103,10 +105,6 @@ class lmdb_writer(DataFlow):
 
     def get_data(self):
         for i, model_id in enumerate(self.model_ids):
-            
-            if i > 10:
-                break
-
             try:
                 assert os.path.exists(os.path.join(render_out_path,model_id))
             except:
@@ -190,8 +188,8 @@ def get_models(category_name, splits = ['train', 'test', 'val']):
     model_ids = []
     for split in splits:
         listFile = "./render_scripts/lists/PTNlist_v2/%s_%sids.txt"%(category_name, split)
-        listFile = os.path.join("./render_scripts/lists/{}_debug.txt".format(category_name))
-        #listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
+        #listFile = os.path.join("./render_scripts/lists/{}_debug.txt".format(category_name))
+        listFile = os.path.join("./render_scripts/lists/{}_lists/{}_idx.txt".format(category_name, split))
         #print listFile
         #sys.exit()
         with open(listFile) as file:
@@ -224,6 +222,8 @@ if __name__ == "__main__":
         #    resolution))
         render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_chair_all'%(category_name, \
             resolution))
+        #render_out_path = os.path.join(BASE_OUT_DIR, 'blender_renderings/%s/res%d_mug_all'%(category_name, \
+        #    resolution))
 
         # render_out_path = '/newfoundland/rz1/res128_random_randLampbb8'
         for splits in splits_list:        
@@ -242,10 +242,13 @@ if __name__ == "__main__":
             # write_path = '/newfoundland/rz1/lmdb'
             write_path = LMDB_DIR
             # write_path = '/data_tmp/lmdbqqqq'
-            lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.tfr"%(cat_name[category_name], sample_num, lmdb_name_append)
+            #lmdb_write = write_path + "/random_randomLamp0822_%s_%d_%s_imageAndShape_single.tfr"%(cat_name[category_name], sample_num, lmdb_name_append)
             #lmdb_write = os.path.join(write_path, 'rgb2depth_single_0209.tfr')
             # depth,mask,surfnorm,campose,vox32
-            lmdb_write = os.path.join(write_path, 'rgb2depth_single_0212_{}.tfr'.format(lmdb_name_append)) 
+            #lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0222_{}.tfr'.format(category_name, lmdb_name_append)) 
+            #size_write = os.path.join(write_path, 'rgb2depth_single_{}_0222_{}.npy'.format(category_name, lmdb_name_append))
+            lmdb_write = os.path.join(write_path, 'rgb2depth_single_{}_0313_{}.tfr'.format(category_name, lmdb_name_append)) 
+            size_write = os.path.join(write_path, 'rgb2depth_single_{}_0313_{}.npy'.format(category_name, lmdb_name_append))
 
             command = 'rm -rf %s'%lmdb_write
             print command
@@ -256,6 +259,8 @@ if __name__ == "__main__":
             print "====== Writing %d models to %s; split: "%(len(model_ids), lmdb_write), splits
             #features_dict = get_features(model_ids, ae)
             ds0 = lmdb_writer(model_ids)
+            size_data = np.asarray(ds0.size())
+            np.save(size_write, size_data)
             # ds1 = PrefetchDataZMQ(ds0, nr_proc=1)
             dftools.dump_dataflow_to_tfrecord(ds0, lmdb_write)
 
