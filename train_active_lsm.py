@@ -207,6 +207,8 @@ def train(agent):
 
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+        vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp) 
@@ -214,6 +216,9 @@ def train(agent):
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
             R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            ## TODO: update vox_temp
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
@@ -223,9 +228,6 @@ def train(agent):
                 replay_mem.append(temp_traj)
                 break
 
-            ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
 
         rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         #print 'reward_batch: {}'.format(reward_batch)
@@ -269,6 +271,8 @@ def evaluate(agent, test_episode_num, replay_mem):
 
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+        vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, is_training=False) 
@@ -276,6 +280,9 @@ def evaluate(agent, test_episode_num, replay_mem):
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
             R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            ## TODO: update vox_temp
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
@@ -284,9 +291,6 @@ def evaluate(agent, test_episode_num, replay_mem):
                 #temp_traj = trajectData(traj_state, actions, rewards, model_id)
                 break
 
-            ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
 
         vox_final_list = np.squeeze(vox_temp_list)
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
@@ -327,6 +331,8 @@ def test(agent, test_episode_num, model_iter):
 
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+        vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, is_training=False) 
@@ -334,6 +340,9 @@ def test(agent, test_episode_num, model_iter):
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
             R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            ## TODO: update vox_temp
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
@@ -342,9 +351,6 @@ def test(agent, test_episode_num, model_iter):
                 temp_traj = trajectData(traj_state, actions, rewards, model_id)
                 break
 
-            ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
 
         vox_final_list = vox_temp_list
 
