@@ -108,6 +108,7 @@ flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
+flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -190,9 +191,9 @@ def train(agent):
     #sys.exit()
     #### for debug
 
-    #log_string('====== Starting burning in memories ======')
-    #burn_in(senv, replay_mem)
-    #log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
+    log_string('====== Starting burning in memories ======')
+    burn_in(senv, replay_mem)
+    log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
 
     #epsilon = FLAGS.init_eps
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
@@ -234,7 +235,7 @@ def train(agent):
         #print 'rewards: {}'.format(rewards)
         feed_dict = {agent.is_training: True, agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
             agent.action_batch: action_batch}
-        merge_summary, loss = agent.sess.run([agent.merged_train, agent.loss], feed_dict=feed_dict)
+        opt_train, merge_summary, loss = agent.sess.run([agent.opt, agent.merged_train, agent.loss], feed_dict=feed_dict)
         log_string('+++++Iteration: {}, loss: {:.4f}, mean_reward: {:.4f}+++++'.format(i_idx, loss, np.mean(rewards)))
         tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
         agent.train_writer.add_summary(merge_summary, i_idx)
@@ -250,10 +251,6 @@ def train(agent):
 
 def evaluate(agent, test_episode_num, replay_mem):
     senv = ShapeNetEnv(FLAGS)
-
-    #log_string('====== Starting burning in memories ======')
-    #burn_in(senv, replay_mem)
-    #log_string('====== Done. {} trajectories burnt in ======'.format(FLAGS.burn_in_length))
 
     #epsilon = FLAGS.init_eps
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
@@ -332,7 +329,7 @@ def test(agent, test_episode_num, model_iter):
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
-        vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
+        vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, is_training=False) 
@@ -390,12 +387,17 @@ def burn_in(senv, replay_mem):
 
         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+        vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             actions.append(np.random.randint(FLAGS.action_num))
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
             R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            ## TODO: update vox_temp
+            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
@@ -406,9 +408,6 @@ def burn_in(senv, replay_mem):
                 replay_mem.append(temp_traj)
                 break
 
-            ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
     #for i in range(FLAGS.max_episode_length*FLAGS.burn_in_length):
     #    actions = []
     #    RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
