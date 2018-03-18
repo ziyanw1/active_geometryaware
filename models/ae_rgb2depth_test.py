@@ -34,10 +34,10 @@ class AE_rgb2d(object):
         self.set_i_to_pl = tf.placeholder(tf.int32,shape=[], name='set_i_to_pl')
         self.assign_i_op = tf.assign(self.global_i, self.set_i_to_pl)
         
-        self.rgb_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,3), name='input_rgb')
-        self.invZ_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,1), name='gt_invZ')
-        self.mask_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,1), name='gt_mask')
-        self.sn_batch = tf.placeholder(tf.float32, shape=(1,FLAGS.resolution,FLAGS.resolution,3), name='gt_sn')
+        self.rgb_batch = tf.placeholder(tf.float32, shape=(None,FLAGS.resolution,FLAGS.resolution,3), name='input_rgb')
+        self.invZ_batch = tf.placeholder(tf.float32, shape=(None,FLAGS.resolution,FLAGS.resolution,1), name='gt_invZ')
+        self.mask_batch = tf.placeholder(tf.float32, shape=(None,FLAGS.resolution,FLAGS.resolution,1), name='gt_mask')
+        self.sn_batch = tf.placeholder(tf.float32, shape=(None,FLAGS.resolution,FLAGS.resolution,3), name='gt_sn')
 
         
         self._create_network()
@@ -64,125 +64,125 @@ class AE_rgb2d(object):
         # create summary
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
-    def _visualize(self):
-        print '='*10
-        print self.voxel_batch
-        print self.pred_voxels
-        print self.rgb_batch
-        print self.depth_batch
-        print self.mask_batch
-        print '='*10        
-        
-        self.vis = {
-            'voxel': self.voxel_batch,
-            'pred_voxel': self.pred_voxels,
-            'rgb': self.rgb_batch,
-            'depth': self.depth_batch,
-            'mask': self.mask_batch,
-            'gt_voxel2depth': self.gt_voxel2depth,
-            'gt_voxel2mask': self.gt_voxel2mask, 
-        }
+    #def _visualize(self):
+    #    print '='*10
+    #    print self.voxel_batch
+    #    print self.pred_voxels
+    #    print self.rgb_batch
+    #    print self.depth_batch
+    #    print self.mask_batch
+    #    print '='*10        
+    #    
+    #    self.vis = {
+    #        'voxel': self.voxel_batch,
+    #        'pred_voxel': self.pred_voxels,
+    #        'rgb': self.rgb_batch,
+    #        'depth': self.depth_batch,
+    #        'mask': self.mask_batch,
+    #        'gt_voxel2depth': self.gt_voxel2depth,
+    #        'gt_voxel2mask': self.gt_voxel2mask, 
+    #    }
 
-    def _voxel_pred(self):
+    #def _voxel_pred(self):
 
-        self.voxel_batch = tf.expand_dims(self.data_loader.voxel_batch, axis = 4)
-        self.depth_batch = 2.0/self.invZ_batch #scale by x2 to make the depths ~4
+    #    self.voxel_batch = tf.expand_dims(self.data_loader.voxel_batch, axis = 4)
+    #    self.depth_batch = 2.0/self.invZ_batch #scale by x2 to make the depths ~4
 
-        BG_DEPTH = 4.0
-        bg_depth = tf.ones_like(self.depth_batch)*BG_DEPTH
-        self.depth_batch = tf.where(self.depth_batch > 5.0, bg_depth, self.depth_batch)
+    #    BG_DEPTH = 4.0
+    #    bg_depth = tf.ones_like(self.depth_batch)*BG_DEPTH
+    #    self.depth_batch = tf.where(self.depth_batch > 5.0, bg_depth, self.depth_batch)
 
-        #using gt inputs for now...
-        in_depth = self.depth_batch
-        in_mask = self.mask_batch
+    #    #using gt inputs for now...
+    #    in_depth = self.depth_batch
+    #    in_mask = self.mask_batch
 
-        in_depth -= 4.0 #subtract the baseline
+    #    in_depth -= 4.0 #subtract the baseline
 
-        #mask **must** come before depth
-        pred_inputs = tf.concat([in_mask, in_depth], axis = 3)
+    #    #mask **must** come before depth
+    #    pred_inputs = tf.concat([in_mask, in_depth], axis = 3)
 
-        #setting up some constants
-        other.constants.S = self.FLAGS.voxel_resolution
+    #    #setting up some constants
+    #    other.constants.S = self.FLAGS.voxel_resolution
 
-        fov = 30.0
-        focal_length = 1.0/math.tan(fov*math.pi/180/2)
-        other.constants.focal_length = focal_length
-        other.constants.BS = self.FLAGS.batch_size
+    #    fov = 30.0
+    #    focal_length = 1.0/math.tan(fov*math.pi/180/2)
+    #    other.constants.focal_length = focal_length
+    #    other.constants.BS = self.FLAGS.batch_size
 
-        other.constants.DEBUG_UNPROJECT = False
-        other.constants.USE_LOCAL_BIAS = False
-        other.constants.USE_OUTLINE = True
-        
-        pred_inputs = other.nets.unproject(pred_inputs)
-        other.constants.mode = 'train'
-        other.constants.rpvx_unsup = False
-        other.constants.force_batchnorm_trainmode = False
-        other.constants.force_batchnorm_testmode = False
-        other.constants.NET3DARCH = 'marr'
-        
-        pred_outputs = self._voxel_net(pred_inputs)
+    #    other.constants.DEBUG_UNPROJECT = False
+    #    other.constants.USE_LOCAL_BIAS = False
+    #    other.constants.USE_OUTLINE = True
+    #    
+    #    pred_inputs = other.nets.unproject(pred_inputs)
+    #    other.constants.mode = 'train'
+    #    other.constants.rpvx_unsup = False
+    #    other.constants.force_batchnorm_trainmode = False
+    #    other.constants.force_batchnorm_testmode = False
+    #    other.constants.NET3DARCH = 'marr'
+    #    
+    #    pred_outputs = self._voxel_net(pred_inputs)
 
-        self.pred_voxels = pred_outputs
+    #    self.pred_voxels = pred_outputs
 
-        self.angles = self.data_loader.angles_batch
-        self.theta = -self.angles[:,0] #remember that we're flipping theta!
-        self.phi = self.angles[:,1]
+    #    self.angles = self.data_loader.angles_batch
+    #    self.theta = -self.angles[:,0] #remember that we're flipping theta!
+    #    self.phi = self.angles[:,1]
 
-        print self.theta
-        print self.phi
-        world2cam_rot_mat = other.voxel.get_transform_matrix_tf(self.theta, self.phi)
-        print world2cam_rot_mat
+    #    print self.theta
+    #    print self.phi
+    #    world2cam_rot_mat = other.voxel.get_transform_matrix_tf(self.theta, self.phi)
+    #    print world2cam_rot_mat
 
-        gt_voxel = other.voxel.transformer_preprocess(self.voxel_batch)
-        gt_voxel = other.voxel.rotate_voxel(gt_voxel, world2cam_rot_mat)
-        self.gt_voxel = gt_voxel
+    #    gt_voxel = other.voxel.transformer_preprocess(self.voxel_batch)
+    #    gt_voxel = other.voxel.rotate_voxel(gt_voxel, world2cam_rot_mat)
+    #    self.gt_voxel = gt_voxel
 
-        print gt_voxel
+    #    print gt_voxel
 
-        proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
-        projected_gt = proj_and_post(gt_voxel)
-        print projected_gt
-        
-        def flatten(voxels):
-            H = self.FLAGS.resolution
-            W = self.FLAGS.resolution            
-            
-            pred_depth = other.voxel.voxel2depth_aligned(voxels)
-            pred_mask = other.voxel.voxel2mask_aligned(voxels)
-        
-            #replace bg with grey
-            hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
-            pred_depth *= hard_mask
+    #    proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
+    #    projected_gt = proj_and_post(gt_voxel)
+    #    print projected_gt
+    #    
+    #    def flatten(voxels):
+    #        H = self.FLAGS.resolution
+    #        W = self.FLAGS.resolution            
+    #        
+    #        pred_depth = other.voxel.voxel2depth_aligned(voxels)
+    #        pred_mask = other.voxel.voxel2mask_aligned(voxels)
+    #    
+    #        #replace bg with grey
+    #        hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
+    #        pred_depth *= hard_mask
 
-            BG_DEPTH = 3.0
-            pred_depth += BG_DEPTH * (1.0 - hard_mask)
+    #        BG_DEPTH = 3.0
+    #        pred_depth += BG_DEPTH * (1.0 - hard_mask)
 
-            pred_depth = tf.image.resize_images(pred_depth, (H, W))
-            pred_mask = tf.image.resize_images(pred_mask, (H, W))
-            return pred_depth, pred_mask
-        
-        gt_depth, gt_mask = flatten(projected_gt)
+    #        pred_depth = tf.image.resize_images(pred_depth, (H, W))
+    #        pred_mask = tf.image.resize_images(pred_mask, (H, W))
+    #        return pred_depth, pred_mask
+    #    
+    #    gt_depth, gt_mask = flatten(projected_gt)
 
-        self.gt_voxel2depth = gt_depth
-        self.gt_voxel2mask = gt_mask
+    #    self.gt_voxel2depth = gt_depth
+    #    self.gt_voxel2mask = gt_mask
 
-        #take losses
-        other.constants.eps = 1E-6
+    #    #take losses
+    #    other.constants.eps = 1E-6
 
-        other.constants.DEBUG_LOSSES = False
-        if other.constants.DEBUG_LOSSES:
-            self.pred_voxels = other.tfpy.summarize_tensor(self.pred_voxels, 'pred')
-        
-        self.voxel_loss = other.losses.binary_ce_loss(self.pred_voxels, self.gt_voxel)
-        
-    def _voxel_net(self, pred_inputs):
-        if other.constants.DEBUG_UNPROJECT:
-            return pred_inputs
-        else:
-            with tf.variable_scope('voxel_net'):
-                out = other.nets.voxel_net_3d(pred_inputs)
-                self.voxel_net_3d_vars = other.tfutil.current_scope_and_vars()[1]
-            return out
+    #    other.constants.DEBUG_LOSSES = False
+    #    if other.constants.DEBUG_LOSSES:
+    #        self.pred_voxels = other.tfpy.summarize_tensor(self.pred_voxels, 'pred')
+    #    
+    #    self.voxel_loss = other.losses.binary_ce_loss(self.pred_voxels, self.gt_voxel)
+    #    
+    #def _voxel_net(self, pred_inputs):
+    #    if other.constants.DEBUG_UNPROJECT:
+    #        return pred_inputs
+    #    else:
+    #        with tf.variable_scope('voxel_net'):
+    #            out = other.nets.voxel_net_3d(pred_inputs)
+    #            self.voxel_net_3d_vars = other.tfutil.current_scope_and_vars()[1]
+    #        return out
         
     def _create_unet(self, rgb, out_channel=1, trainable=True, if_bn=False, reuse=False, scope_name='unet_2d'):
 
