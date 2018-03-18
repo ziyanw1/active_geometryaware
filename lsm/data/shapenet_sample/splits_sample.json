@@ -1,0 +1,38 @@
+{
+    "02828884": {
+        "test": [
+            "913cb50bf5d336238b0239afbed4a626", 
+            "913cb50bf5d336238b0239afbed4a626", 
+            "8fe23a363bf80c48f155d75bbf62b80", 
+            "8fe23a363bf80c48f155d75bbf62b80"
+        ], 
+        "name": "bench"
+    }, 
+    "02958343": {
+        "test": [
+            "7f198a2357dec222f98feeb6b46f3cac", 
+            "2d676334a707d2f393f22370376f78bd", 
+            "12498dd65e8d65ac3b6f5204eb590354", 
+            "5d756a52f6f361abf500cc506a763c18"
+        ], 
+        "name": "car,auto,automobile,machine,motorcar"
+    }, 
+    "02691156": {
+        "test": [
+            "e0df97dfc068e3664bf88973bd147a26", 
+            "8baeb2c664b0bdf4ca8607f540cc62ba", 
+            "dfa5d6ed898152d34210bb5f1b1324bb"
+        ], 
+        "name": "airplane,aeroplane,plane"
+    }, 
+    "03001627": {
+        "test": [
+            "d8ea454fb35e38887b11ae648ea92233", 
+            "41d9bd662687cf503ca22f17e86bab24", 
+            "c236deaff8c6fb0d29c9a7a92b0a566d", 
+            "53180e91cd6651ab76e29c9c43bc7aa", 
+            "e8fcc8054e445a0c20768660cf080d12"
+        ], 
+        "name": "chair"
+    }
+}

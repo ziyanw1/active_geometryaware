@@ -1,0 +1,6 @@
+model_checkpoint_path: "mvnet-100000"
+all_model_checkpoint_paths: "mvnet-80000"
+all_model_checkpoint_paths: "mvnet-85000"
+all_model_checkpoint_paths: "mvnet-90000"
+all_model_checkpoint_paths: "mvnet-95000"
+all_model_checkpoint_paths: "mvnet-100000"

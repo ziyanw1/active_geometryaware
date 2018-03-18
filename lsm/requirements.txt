@@ -1,0 +1,9 @@
+numpy
+scipy
+tqdm
+tabulate
+scikit-image
+matplotlib
+plyfile
+tensorflow-gpu
+jupyter
