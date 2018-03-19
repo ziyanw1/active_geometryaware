@@ -140,11 +140,12 @@ class ReplayMemory():
         mask = sm.imresize(mask, (self.FLAGS.resolution, self.FLAGS.resolution), interp='nearest') 
         return (new_img/255.0).astype(np.float32), mask[..., 0]
 
-    def read_invZ(self, azim, elev, model_id):
+    def read_invZ(self, azim, elev, model_id, resize = True):
         invZ_name = 'invZ_{}_{}.npy'.format(int(azim), int(elev))
         invZ_path = os.path.join(self.data_dir, model_id, invZ_name)
         invZ = np.load(invZ_path)
-        invZ = sm.imresize(invZ, (self.FLAGS.resolution, self.FLAGS.resolution))
+        if resize:
+            invZ = sm.imresize(invZ, (self.FLAGS.resolution, self.FLAGS.resolution), mode = 'F', interp='nearest')
         return invZ
 
     def get_R(self, azim, elev):

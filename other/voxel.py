@@ -32,7 +32,6 @@ github.com/tensorflow/models/tree/master/research/transformer
 
 import tfpy
 import tensorflow as tf
-import camera
 import constants as const
 import numpy as np
 import tfutil
@@ -113,9 +112,21 @@ def transformer(voxels,
             max_x = tf.to_int32(tf.shape(im)[3] - 1)
 
             # Converts scale indices from [-1, 1] to [0, width/height/depth].
-            x = (x + 1.0) * (width_f) / 2.0
-            y = (y + 1.0) * (height_f) / 2.0
-            z = (z + 1.0) * (depth_f) / 2.0
+            cube_size = z_far-z_near
+            half_size = cube_size/2.0
+
+            #x = tfpy.summarize_tensor(x, 'x') #ranges (-2/3, 2/3) then (-2.5, 2.5) then (-1, 1)
+            #y = tfpy.summarize_tensor(y, 'y') #ranges ()
+            #z = tfpy.summarize_tensor(z, 'z') #ranges (-0.5, 0.5) then it changes
+
+            #raise Exception, 'bad'
+            
+            x = (x + 1) * (width_f) / 2.0
+            y = (y + 1) * (height_f) / 2.0
+            z = (z + 1) * (depth_f) / 2.0
+
+            
+            #z = (z + half_size) * (depth_f) / cube_size
 
             #x = tfpy.summarize_tensor(x, 'x') #(-21, 150)
             #z = tfpy.summarize_tensor(z, 'z') #(0, 128)
@@ -456,7 +467,7 @@ def get_transform_matrix_tf_(theta, phi, invert_rot = False, invert_focal = Fals
         rotation_matrix = tf.linalg.inv(rotation_matrix)
 
     displacement = np.zeros((3, 1), dtype=np.float32)
-    displacement[0, 0] = 4.0 #because the target has distance 4
+    displacement[0, 0] = const.DIST_TO_CAM #because the target has distance 4
     displacement = tf.constant(displacement, dtype = np.float32)
     displacement = tf.matmul(rotation_matrix, displacement)
 
@@ -522,7 +533,7 @@ def get_transform_matrix(theta, phi = None, invert_rot = False, invert_focal = F
         rotation_matrix = np.linalg.inv(rotation_matrix)
 
     displacement = np.zeros((3, 1), dtype=np.float32)
-    displacement[0, 0] = 4.0
+    displacement[0, 0] = const.DIST_TO_CAM
     displacement = np.matmul(rotation_matrix, displacement)
 
     #assembling 4x4 from R + T
@@ -552,8 +563,8 @@ def rotate_and_project_voxel(voxel, rotmat):
         voxel,
         tf.reshape(rotmat, (const.BS, 16)),
         (const.S, const.S, const.S),
-        3.0,
-        5.0,
+        const.NEAR_PLANE,
+        const.FAR_PLANE,
     )
 
     out = transformer_postprocess(out)
@@ -568,8 +579,8 @@ def rotate_voxel(voxel, rotmat):
         voxel,
         tf.reshape(rotmat, (const.BS, 16)),
         (const.S, const.S, const.S),
-        3.0,
-        5.0,
+        const.NEAR_PLANE,
+        const.FAR_PLANE,
         do_project = False,
     )
 
@@ -581,8 +592,8 @@ def project_voxel(voxel):
         voxel,
         tf.reshape(rotmat, (const.BS, 16)),
         (const.S, const.S, const.S),
-        3.0,
-        5.0,
+        const.NEAR_PLANE,
+        const.FAR_PLANE,
         do_project = True,
     )
 
@@ -619,8 +630,8 @@ def unproject_voxel(voxel):
         voxel,
         tf.reshape(rotmat, (const.BS, 16)),
         (const.S, const.S, const.S),
-        3.0,
-        5.0,
+        const.NEAR_PLANE,
+        const.FAR_PLANE,
         do_project = 'invert',
     )
 
@@ -657,7 +668,6 @@ def transformer_postprocess(voxel):
 def voxel2mask_aligned(voxel):
     return tf.reduce_max(voxel, axis=3)
 
-
 def voxel2depth_aligned(voxel):
     voxel = tf.squeeze(voxel, axis=4)
 
@@ -679,8 +689,8 @@ def voxel2depth_aligned(voxel):
     depth = tf.cast(depth, tf.float32)
     depth += 0.5 #0.5 to 127.5
     depth /= const.S #almost 0.0 to 1.0
-    depth *= 2 #almost 0.0 to 2.0
-    depth += 3.0 #about 3.0 to 5.0
+    depth *= const.FAR_PLANE - const.NEAR_PLANE #almost 0.0 to 2.0
+    depth += const.NEAR_PLANE #about 3.0 to 5.0
 
     return depth
 

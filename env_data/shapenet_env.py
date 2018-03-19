@@ -30,7 +30,7 @@ class ShapeNetEnv():
         self.FLAGS = FLAGS
         self.max_episode_length = FLAGS.max_episode_length
 
-        self.category = FLAGS.category 
+        self.category = FLAGS.category
         self.lists_dir = 'data/render_scripts/lists/{}_lists/'.format(self.category) 
         with open(self.lists_dir+'train_idx.txt', 'r') as f:
             self.train_list = f.read().splitlines()
