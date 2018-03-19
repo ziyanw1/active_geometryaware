@@ -8,6 +8,7 @@ from utils import tf_util
 
 from env_data.replay_memory import ReplayMemory
 from env_data.shapenet_env import ShapeNetEnv, trajectData  
+from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
@@ -157,10 +158,54 @@ class ActiveMVnet(object):
             
         return net_out_
 
+    def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False, scope_name='aggr_64'):
+        with tf.variable_scope(scope_name) as scope:
+            if reuse:
+                scope.reuse_variables()
+
+            if if_bn:
+                batch_normalizer_gen = slim.batch_norm
+                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
+            else:
+                #self._print_arch('=== NOT Using BN for GENERATOR!')
+                batch_normalizer_gen = None
+                batch_norm_params_gen = None
+
+            if self.FLAGS.if_l2Reg:
+                weights_regularizer = slim.l2_regularizer(1e-5)
+            else:
+                weights_regularizer = None
+            
+            ## create fuser
+            with slim.arg_scope([slim.fully_connected],
+                    activation_fn=self.activation_fn,
+                    trainable=trainable,
+                    normalizer_fn=batch_normalizer_gen,
+                    normalizer_params=batch_norm_params_gen,
+                    weights_regularizer=weights_regularizer):
+                
+                unproj_grids_coll = collapse_dims(unproj_grids)
+                net_unproj = slim.conv3d(unproj_grids_coll, 32, kernel_size=4, stride=2, padding='SAME', scope='aggr_conv1')
+                net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv2')
+                net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv3')
+        
+                ## the input for convgru should be in shape of [bs, episode_len, vox_reso, vox_reso, vox_reso, ch]
+                net_unproj = uncollapse_dims(net_unproj, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+                net_pool_grid, _ = convgru(net_unproj, filters=channels) ## should be shape of [bs, len, vox_reso x 3, ch] 
+
+        return net_pool_grid
+
     def _create_policy_net(self):
         self.rgb_batch_norm = tf.subtract(self.rgb_batch, 0.5)
         self.action_prob, self.logits = self._create_dqn_two_stream(self.rgb_batch_norm, self.vox_batch,
             if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+
+    def _create_network(self):
+        self.rgb_batch_norm = tf.subtract(self.rgb_batch, 0.5)
+
+        ## TODO: unproj depth list and merge them using aggregator
+
+        ## TODO: collapse vox feature and do inference using unet3d
     
     def _create_loss(self):
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
