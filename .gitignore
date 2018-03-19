@@ -7,3 +7,6 @@ vis*
 data/data_cache
 data/lmdb*
 voxels
+*.png
+*.pyc
+*.npy
