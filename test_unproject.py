@@ -171,18 +171,25 @@ def make_tensors_for_raw_inputs(rgb, invz, mask):
     mask = np.expand_dims(mask, axis = 0)
     invz = np.expand_dims(invz, axis = 0)
 
-    rgb = tf.constant(rgb, dtype = tf.float32)
-    invz = tf.constant(invz, dtype = tf.float32)
-    mask = tf.constant(mask, dtype = tf.float32)
+    rgb_ = tf.placeholder(shape = rgb.shape, dtype = tf.float32)
+    invz_ = tf.placeholder(shape = invz.shape, dtype = tf.float32)
+    mask_ = tf.placeholder(shape = mask.shape, dtype = tf.float32)
+    #rgb = tf.constant(rgb, dtype = tf.float32)
+    #invz = tf.constant(invz, dtype = tf.float32)
+    #mask = tf.constant(mask, dtype = tf.float32)
 
-    depth = 1.0/(invz+const.eps)
+    depth = 1.0/(invz_+const.eps)
     depth *= 2.0    
-    depth = depth * mask + const.DIST_TO_CAM * (1.0-mask)
+    depth = depth * mask_ + const.DIST_TO_CAM * (1.0-mask_)
 
-    return rgb, depth, mask
+    feed_dict = {rgb_: rgb.copy(), invz_: invz.copy(), mask_: mask.copy()}
 
-rgb0, depth0, mask0 = make_tensors_for_raw_inputs(rgb0, invz0, mask0)
-rgb1, depth1, mask1 = make_tensors_for_raw_inputs(rgb1, invz1, mask1)
+    return rgb_, depth, mask_, feed_dict
+
+rgb0, depth0, mask0, fd = make_tensors_for_raw_inputs(rgb0, invz0, mask0)
+rgb1, depth1, mask1, fd1 = make_tensors_for_raw_inputs(rgb1, invz1, mask1)
+
+fd.update(fd1)
 
 vox = tf.constant(vox, dtype = tf.float32)
 
@@ -268,7 +275,12 @@ t0 = time.time()
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())
 sess.run(tf.local_variables_initializer())
-outputs = sess.run(ops_to_run)
+
+for i in range(10):
+    start = time.time()
+    outputs = sess.run(ops_to_run, feed_dict = fd)
+    end = time.time()
+    print 'iteration %d took %f s' % (i, end-start)
 
 print 'finished in %f seconds' % (time.time()-t0)
 t0 = time.time()
