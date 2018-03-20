@@ -380,14 +380,10 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             else:
                 norm_fn = slim.batch_norm
 
-            print 'before', net
-                
             net = slim.conv3d_transpose(
                 net, chan, ksize, stride=stride, padding=padding, activation_fn = activation_fn,
                 normalizer_fn = norm_fn, trainable = decoder_trainable
             )
-
-            print 'after', net 
 
             #now concatenate on the skip-connection
             net = tf.concat([net, skipcons.pop()], axis = 4)
