@@ -101,7 +101,7 @@ const.FAR_PLANE = 5.0
 fov = 30.0
 focal_length = 1.0/math.tan(fov*math.pi/180/2)
 const.focal_length = focal_length
-const.BS = FLAGS.batch_size
+const.BS = None
 
 const.DEBUG_UNPROJECT = False
 const.USE_LOCAL_BIAS = False
@@ -227,6 +227,9 @@ def unproject_and_rotate(depth, mask, additional, rotation = None):
 out0 = unproject_and_rotate(depth0, mask0, rgb0, None)
 out1 = unproject_and_rotate(depth1, mask1, rgb1, None)
 out2 = unproject_and_rotate(depth1, mask1, rgb1, rotation_obj)
+
+#these can be fed into the voxel net as follows:
+prediction = other.nets.voxel_net_3d(out0)
 
 #we can visualize the outlines pretty well
 outline_idx = int(out0.get_shape()[-1])-1

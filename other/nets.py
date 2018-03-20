@@ -289,6 +289,8 @@ def voxel_net(inputs, aux = None, bn = True, outsize = 128, built_in_transform =
     return net
 
 def unproject(inputs):
+
+    bs = int(list(inputs.get_shape())[0])
     
     inputs = tf.image.resize_images(inputs, (const.S, const.S))
     #now unproject, to get our starting point
@@ -298,7 +300,7 @@ def unproject(inputs):
     #copied from components.py
     meshgridz = tf.range(const.S, dtype = tf.float32)
     meshgridz = tf.reshape(meshgridz, (1, const.S, 1, 1))
-    meshgridz = tf.tile(meshgridz, (const.BS, 1, const.S, const.S))
+    meshgridz = tf.tile(meshgridz, (bs, 1, const.S, const.S))
     meshgridz = tf.expand_dims(meshgridz, axis = 4) 
     meshgridz = (meshgridz + 0.5) / (const.S/2.0) - 1.0 #now (-1,1)
 
@@ -320,7 +322,7 @@ def unproject(inputs):
         bias = tf.get_variable("voxelnet_bias", dtype=tf.float32,
                                shape = [1, const.S, const.S, const.S, 1],
                                initializer=tf.zeros_initializer())
-        bias = tf.tile(bias, (const.BS, 1, 1, 1, 1))
+        bias = tf.tile(bias, (bs, 1, 1, 1, 1))
 
 
     inputs_ = [inputs, meshgridz]
@@ -332,10 +334,15 @@ def unproject(inputs):
     return inputs
 
 def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
-    
+
+
     # B x S x S x S x 25
     ###########################
 
+    if aux is not None:
+        assert tfutil.rank(aux) == 2
+        aux_dim = int(tuple(aux.get_shape())[1])
+        
     #aux is used for the category input
     bn_trainmode = ((const.mode != 'test') and (not const.rpvx_unsup))
     if const.force_batchnorm_trainmode:
@@ -379,7 +386,7 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
         #BS x 4 x 4 x 4 x 256
 
         if aux is not None:
-            aux = tf.reshape(aux, (const.BS, 1, 1, 1, -1))
+            aux = tf.reshape(aux, (-1, 1, 1, 1, aux_dim))
 
             if const.NET3DARCH == '3x3':
                 aux = tf.tile(aux, (1, 4, 4, 4, 1)) #!!!!!!!!!!!!!! hardcoded value
