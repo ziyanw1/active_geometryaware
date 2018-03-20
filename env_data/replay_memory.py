@@ -138,7 +138,7 @@ class ReplayMemory():
         new_img = new_img * mask + np.ones_like(new_img, dtype=np.float32) * (1.0 - mask)
         new_img = sm.imresize(new_img, (self.FLAGS.resolution, self.FLAGS.resolution, 3))
         mask = sm.imresize(mask, (self.FLAGS.resolution, self.FLAGS.resolution), interp='nearest') 
-        return (new_img/255.0).astype(np.float32), mask[..., 0]
+        return (new_img/255.0).astype(np.float32), mask[..., 0]/255.0
 
     def read_invZ(self, azim, elev, model_id, resize = True):
         invZ_name = 'invZ_{}_{}.npy'.format(int(azim), int(elev))
