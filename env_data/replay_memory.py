@@ -139,7 +139,7 @@ class ReplayMemory():
         new_img = new_img * mask + np.ones_like(new_img, dtype=np.float32) * (1.0 - mask)
         new_img = sm.imresize(new_img, (self.FLAGS.resolution, self.FLAGS.resolution, 3))
         mask = sm.imresize(mask, (self.FLAGS.resolution, self.FLAGS.resolution), interp='nearest') 
-        return (new_img/255.0).astype(np.float32), mask[..., 0]
+        return (new_img/255.0).astype(np.float32), mask[..., 0]/255.0
 
     def read_invZ(self, azim, elev, model_id, resize = True):
         invZ_name = 'invZ_{}_{}.npy'.format(int(azim), int(elev))
@@ -326,6 +326,34 @@ class ReplayMemory():
 
         #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
         return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
+    
+    def get_batch_list(self, batch_size=4):
+        
+        RGB_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
+        vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
+            dtype=np.float32)
+        azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
+        elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
+        actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
+
+        for b_idx in range(batch_size):
+            higher_bound = min(self.count, self.mem_length)
+            rand_idx = np.random.randint(0, higher_bound)
+            data_ = self.mem_list[rand_idx]
+
+            azim_batch[b_idx, ...] = np.asarray(data_.states[0])
+            elev_batch[b_idx, ...] = np.asarray(data_.states[1])
+            actions_batch[b_idx, ...] = np.asarray(data_.actions)
+            reward_list_batch[b_idx, ...] = np.asarray(data_.rewards)
+            model_id = data_.model_id
+            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+            vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
+
+            for l_idx in range(self.max_episode_length):
+                RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, ...] = self.read_png_to_uint8(
+                    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
+
+        return RGB_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
 
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma

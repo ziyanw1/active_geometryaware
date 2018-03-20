@@ -165,7 +165,7 @@ gt_rotation = make_rotation_object(az0, el0, 0.0, 0.0)
 #stuff everything into tensors and do all required data preprocessing
 
 def make_tensors_for_raw_inputs(rgb, invz, mask):
-    mask = (mask > 128.0).astype(np.float32)
+    mask = (mask > 0.5).astype(np.float32)
     mask *= (invz >= const.eps)
     
     invz = np.expand_dims(invz, axis = 2)
