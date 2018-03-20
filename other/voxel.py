@@ -43,6 +43,7 @@ def transformer(voxels,
                 z_far,
                 name='PerspectiveTransformer',
                 do_project = True):
+
     """Perspective Transformer Layer.
 
     Args:
@@ -89,7 +90,9 @@ def transformer(voxels,
 
         """
         with tf.variable_scope('_interpolate'):
-            num_batch = im.get_shape().as_list()[0]
+            #num_batch = im.get_shape().as_list()[0]
+            num_batch = tfutil.batchdim(im)
+            
             depth = im.get_shape().as_list()[1]
             height = im.get_shape().as_list()[2]
             width = im.get_shape().as_list()[3]
@@ -162,12 +165,15 @@ def transformer(voxels,
             dim1 = width * height * depth
 
             #repeat can only be run on cpu
-            #base = _repeat(
-            #    tf.range(num_batch) * dim1, out_depth * out_height * out_width)
-            base = tf.constant(
-                np.concatenate([np.array([i] * out_depth * out_height * out_width)
-                                for i in range(const.BS)]).astype(np.int32)
-            )
+            if True:
+                base = _repeat(
+                    tf.range(num_batch) * dim1, out_depth * out_height * out_width)
+            else:
+                base = tf.constant(
+                    np.concatenate([np.array([i] * out_depth * out_height * out_width)
+                                    for i in range(const.BS)]).astype(np.int32)
+                )
+            
             #only works for bs = 1
             #base = tf.zeros((out_depth * out_height * out_width), dtype=tf.int32)
 
@@ -364,7 +370,9 @@ def transformer(voxels,
 
     def _transform(theta, input_dim, out_size, z_near, z_far):
         with tf.variable_scope('_transform'):
-            num_batch = input_dim.get_shape().as_list()[0]
+            #num_batch = input_dim.get_shape().as_list()[0]
+            num_batch = tfutil.batchdim(input_dim)
+            
             num_channels = input_dim.get_shape().as_list()[4]
             theta = tf.reshape(theta, (-1, 4, 4))
             theta = tf.cast(theta, 'float32')
@@ -571,10 +579,10 @@ def rotate_and_project_voxel(voxel, rotmat):
         voxel = tf.expand_dims(voxel, axis = 4)
 
     voxel = transformer_preprocess(voxel)
-        
+
     out = transformer(
         voxel,
-        tf.reshape(rotmat, (const.BS, 16)),
+        tf.reshape(rotmat, tf.stack([tfutil.batchdim(voxel), 16])),
         (const.S, const.S, const.S),
         const.NEAR_PLANE,
         const.FAR_PLANE,
@@ -590,7 +598,7 @@ def rotate_and_project_voxel(voxel, rotmat):
 def rotate_voxel(voxel, rotmat):
     return transformer(
         voxel,
-        tf.reshape(rotmat, (const.BS, 16)),
+        tf.reshape(rotmat, tf.stack([tfutil.batchdim(voxel), 16])),
         (const.S, const.S, const.S),
         const.NEAR_PLANE,
         const.FAR_PLANE,
@@ -600,10 +608,10 @@ def rotate_voxel(voxel, rotmat):
 def project_voxel(voxel):
     rotmat = tf.constant(get_transform_matrix(0.0, 0.0), dtype = tf.float32)
     rotmat = tf.reshape(rotmat, (1, 4, 4))
-    rotmat = tf.tile(rotmat, (const.BS, 1, 1))
+    rotmat = tf.tile(rotmat, tf.stack([tfutil.batchdim(voxel), 1, 1]))
     return transformer(
         voxel,
-        tf.reshape(rotmat, (const.BS, 16)),
+        tf.reshape(rotmat, tf.stack([tfutil.batchdim(voxel), 16])),
         (const.S, const.S, const.S),
         const.NEAR_PLANE,
         const.FAR_PLANE,
@@ -637,11 +645,11 @@ def unproject_voxel(voxel):
     
     rotmat = tf.constant(get_transform_matrix(0.0, 0.0, invert_focal = True), dtype = tf.float32)
     rotmat = tf.reshape(rotmat, (1, 4, 4))
-    rotmat = tf.tile(rotmat, (const.BS, 1, 1))
+    rotmat = tf.tile(rotmat, tf.stack([tfutil.batchdim(voxel), 1, 1]))
     
     voxel =  transformer(
         voxel,
-        tf.reshape(rotmat, (const.BS, 16)),
+        tf.reshape(rotmat, tf.stack([tfutil.batchdim(voxel), 16])),
         (const.S, const.S, const.S),
         const.NEAR_PLANE,
         const.FAR_PLANE,
@@ -684,15 +692,17 @@ def voxel2mask_aligned(voxel):
 def voxel2depth_aligned(voxel):
     voxel = tf.squeeze(voxel, axis=4)
 
+    imgshape = tf.stack([tfutil.batchdim(voxel), const.S, const.S, 1])
+    
     costgrid = tf.cast(tf.tile(
-        tf.reshape(tf.range(0, const.S), (1, 1, 1, const.S)),
-        (const.BS, const.S, const.S, 1)
+        tf.reshape(tf.range(0, const.S), (1, 1, 1, const.S)), imgshape
     ), tf.float32)
 
     invalid = 1000 * tf.cast(voxel < 0.5, dtype=tf.float32)
-    invalid_mask = tf.tile(tf.reshape(tf.constant([1.0] * (const.S - 1) + [0.0], tf.float32),
-                                      (1, 1, 1, const.S)),
-                           (const.BS, const.S, const.S, 1))
+    invalid_mask = tf.tile(
+        tf.reshape(tf.constant([1.0] * (const.S - 1) + [0.0], tf.float32), (1, 1, 1, const.S)),
+        imgshape
+    )
 
     costgrid = costgrid + invalid * invalid_mask
 

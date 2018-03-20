@@ -216,3 +216,10 @@ def match_placeholders_to_inputs(phs, inps):
         print type(phs), type(inps)
         raise Exception, 'unsupported type...'
 
+def batchsize(tensor):
+    return int(tuple(tensor.get_shape())[0])
+
+def batchdim(tensor):
+    if list(tensor.get_shape())[0] == None:
+        return tf.unstack(tf.shape(tensor))[0]
+    return list(tensor.get_shape())[0]
