@@ -113,15 +113,16 @@ class ReplayMemory():
         
         self.count += 1
 
-    def read_bv(self, fn):
+    def read_bv(self, fn, transpose = True):
         with open(fn, 'rb') as f:
             model = binvox_rw.read_as_3d_array(f)
         data = np.float32(model.data)
-        data = np.transpose(data, (0,2,1))
+        if transpose:
+            data = np.transpose(data, (0,2,1))
         return data
 
-    def read_vox(self, vox_name): 
-        vox_model = self.read_bv(vox_name) 
+    def read_vox(self, vox_name, transpose = True): 
+        vox_model = self.read_bv(vox_name, transpose) 
         vox_factor = self.voxel_resolution * 1.0 / 128
         #vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation
         vox_model_zoom = downsample(vox_model, int(1/vox_factor))

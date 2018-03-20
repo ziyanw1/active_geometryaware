@@ -142,8 +142,11 @@ invz0_ = mem.read_invZ(az0, el0, model_id, resize = False)
 rgb1, mask1 = mem.read_png_to_uint8(az1, el1, model_id)
 invz1 = mem.read_invZ(az1, el1, model_id)
 
-vox = mem.read_vox(voxel_name)
+vox = mem.read_vox(voxel_name, transpose = False)
+#be sure not to transpose while reading in voxels
+
 vox = np.expand_dims(vox, axis = 0)
+vox = np.expand_dims(vox, axis = 4)
 
 def make_rotation_object(az0, el0, az1, el1):
     #returns object which can be used to rotate view 1 -> 0
@@ -157,6 +160,7 @@ def make_rotation_object(az0, el0, az1, el1):
     return (r1, r2)
 
 rotation_obj = make_rotation_object(az0, el0, az1, el1)
+gt_rotation = make_rotation_object(az0, el0, 0.0, 0.0)
 
 #stuff everything into tensors and do all required data preprocessing
 
@@ -189,6 +193,9 @@ def make_tensors_for_raw_inputs(rgb, invz, mask):
 rgb0, depth0, mask0, fd = make_tensors_for_raw_inputs(rgb0, invz0, mask0)
 rgb1, depth1, mask1, fd1 = make_tensors_for_raw_inputs(rgb1, invz1, mask1)
 
+gt_vox = tf.placeholder(shape = vox.shape, dtype = tf.float32)
+
+fd.update({gt_vox : vox})
 fd.update(fd1)
 
 vox = tf.constant(vox, dtype = tf.float32)
@@ -227,6 +234,12 @@ outline0 = out0[:,:,:,:,outline_idx:outline_idx+1]
 outline1 = out1[:,:,:,:,outline_idx:outline_idx+1]
 outline2 = out2[:,:,:,:,outline_idx:outline_idx+1]
 
+####
+#also rotate ground truth voxels to the pose of state 0
+gt_vox = other.voxel.transformer_preprocess(gt_vox)
+gt_vox = other.voxel.rotate_voxel(gt_vox, gt_rotation[0])
+gt_vox = other.voxel.rotate_voxel(gt_vox, gt_rotation[1])
+
 #### some postprocessing, so that we can view the unprojected voxels and check for reasonableness
 
 proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
@@ -251,6 +264,8 @@ def flatten(voxels):
 out_depth0, out_mask0 = flatten(proj_and_post(outline0))
 out_depth1, out_mask1 = flatten(proj_and_post(outline1))
 out_depth2, out_mask2 = flatten(proj_and_post(outline2))
+out_depth3, out_mask3 = flatten(proj_and_post(gt_vox))
+#out_depth3, out_mask3 = flatten(other.voxel.project_voxel(gt_vox))
 
 ops_to_run = {
     'depth0': depth0,
@@ -265,6 +280,8 @@ ops_to_run = {
     'out_mask1': out_mask1,
     'out_depth2': out_depth2,
     'out_mask2': out_mask2,
+    'out_depth3': out_depth3,
+    'out_mask3': out_mask3,
 }
 
 #other.img.imsave('debug/invz0.png', invz0)
@@ -297,6 +314,10 @@ print '\nout_depth2'
 print np.min(outputs['out_depth2'])
 print np.max(outputs['out_depth2'])
 
+print '\nout_depth3'
+print np.min(outputs['out_depth3'])
+print np.max(outputs['out_depth3'])
+
 print '\ndepth1'
 print np.min(outputs['depth1'])
 print np.max(outputs['depth1'])
@@ -320,5 +341,8 @@ other.img.imsave01('debug/out_mask1.png', outputs['out_mask1'][0,:,:,0])
 
 other.img.imsave01('debug/out_depth2.png', outputs['out_depth2'][0,:,:,0], const.NEAR_PLANE, const.FAR_PLANE)
 other.img.imsave01('debug/out_mask2.png', outputs['out_mask2'][0,:,:,0])
+
+other.img.imsave01('debug/out_depth3.png', outputs['out_depth3'][0,:,:,0], const.NEAR_PLANE, const.FAR_PLANE)
+other.img.imsave01('debug/out_mask3.png', outputs['out_mask3'][0,:,:,0])
 
 print 'dumped outputs in %f seconds' % (time.time()-t0)
