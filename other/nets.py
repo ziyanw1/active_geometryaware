@@ -300,7 +300,7 @@ def unproject(inputs):
     meshgridz = tf.reshape(meshgridz, (1, const.S, 1, 1))
     meshgridz = tf.tile(meshgridz, (const.BS, 1, const.S, const.S))
     meshgridz = tf.expand_dims(meshgridz, axis = 4) 
-    meshgridz = (meshgridz + 0.5) / 64.0 - 1.0 #now (-1,1)
+    meshgridz = (meshgridz + 0.5) / (const.S/2.0) - 1.0 #now (-1,1)
 
     #get the rough outline
     unprojected_mask = tf.expand_dims(inputs[:,:,:,:,0], 4)

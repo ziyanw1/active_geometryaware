@@ -112,6 +112,8 @@ def transformer(voxels,
             max_x = tf.to_int32(tf.shape(im)[3] - 1)
 
             # Converts scale indices from [-1, 1] to [0, width/height/depth].
+            #to be precise, we should actually be mapping to [-0.5, S-0.5]
+            
             cube_size = z_far-z_near
             half_size = cube_size/2.0
 
@@ -120,11 +122,22 @@ def transformer(voxels,
             #z = tfpy.summarize_tensor(z, 'z') #ranges (-0.5, 0.5) then it changes
 
             #raise Exception, 'bad'
-            
-            x = (x + 1) * (width_f) / 2.0
-            y = (y + 1) * (height_f) / 2.0
-            z = (z + 1) * (depth_f) / 2.0
 
+            #centers seems to be the correct mapping mode for most use cases
+            mapping_mode = 'centers'
+
+            if mapping_mode == 'default':
+                x = (x + 1) * (width_f) / 2.0
+                y = (y + 1) * (height_f) / 2.0
+                z = (z + 1) * (depth_f) / 2.0
+            elif mapping_mode == 'corners':
+                x = (x + 1) * (width_f) / 2.0 - 0.5
+                y = (y + 1) * (height_f) / 2.0 - 0.5
+                z = (z + 1) * (depth_f) / 2.0 - 0.5
+            elif mapping_mode == 'centers':
+                x = (x + 1) * (width_f-1.0) / 2.0
+                y = (y + 1) * (height_f-1.0) / 2.0
+                z = (z + 1) * (depth_f-1.0) / 2.0
             
             #z = (z + half_size) * (depth_f) / cube_size
 
@@ -687,7 +700,12 @@ def voxel2depth_aligned(voxel):
 
     #convert back to (3,5)
     depth = tf.cast(depth, tf.float32)
-    depth += 0.5 #0.5 to 127.5
+    
+    #depth += 0.5 #0.5 to 127.5
+    
+    #we don't add 0.5 because assume the surface is at the boundary
+    #of two voxels
+    
     depth /= const.S #almost 0.0 to 1.0
     depth *= const.FAR_PLANE - const.NEAR_PLANE #almost 0.0 to 2.0
     depth += const.NEAR_PLANE #about 3.0 to 5.0
