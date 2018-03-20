@@ -288,51 +288,6 @@ def voxel_net(inputs, aux = None, bn = True, outsize = 128, built_in_transform =
 
     return net
 
-def unproject(inputs):
-
-    bs = int(list(inputs.get_shape())[0])
-    
-    inputs = tf.image.resize_images(inputs, (const.S, const.S))
-    #now unproject, to get our starting point
-    inputs = voxel.unproject_image(inputs)
-
-    #in addition, add on a z-map, and a local bias
-    #copied from components.py
-    meshgridz = tf.range(const.S, dtype = tf.float32)
-    meshgridz = tf.reshape(meshgridz, (1, const.S, 1, 1))
-    meshgridz = tf.tile(meshgridz, (bs, 1, const.S, const.S))
-    meshgridz = tf.expand_dims(meshgridz, axis = 4) 
-    meshgridz = (meshgridz + 0.5) / (const.S/2.0) - 1.0 #now (-1,1)
-
-    #get the rough outline
-    unprojected_mask = tf.expand_dims(inputs[:,:,:,:,0], 4)
-    unprojected_depth = tf.expand_dims(inputs[:,:,:,:,1], 4)
-    outline_thickness = 0.1
-    outline = tf.cast(tf.logical_and(
-        unprojected_depth <= meshgridz,
-        unprojected_depth + 0.1 > meshgridz
-    ), tf.float32)
-    outline *= unprojected_mask
-
-    if const.DEBUG_UNPROJECT:
-        #return tf.expand_dims(inputs[:,:,:,:,0], 4) #this is the unprojected mask
-        return outline
-
-    if const.USE_LOCAL_BIAS:
-        bias = tf.get_variable("voxelnet_bias", dtype=tf.float32,
-                               shape = [1, const.S, const.S, const.S, 1],
-                               initializer=tf.zeros_initializer())
-        bias = tf.tile(bias, (bs, 1, 1, 1, 1))
-
-
-    inputs_ = [inputs, meshgridz]
-    if const.USE_LOCAL_BIAS:
-        inputs_.append(bias)
-    if const.USE_OUTLINE:
-        inputs_.append(outline)
-    inputs = tf.concat(inputs_, axis = 4)
-    return inputs
-
 def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
 
 
@@ -425,10 +380,14 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             else:
                 norm_fn = slim.batch_norm
 
+            print 'before', net
+                
             net = slim.conv3d_transpose(
                 net, chan, ksize, stride=stride, padding=padding, activation_fn = activation_fn,
                 normalizer_fn = norm_fn, trainable = decoder_trainable
             )
+
+            print 'after', net 
 
             #now concatenate on the skip-connection
             net = tf.concat([net, skipcons.pop()], axis = 4)

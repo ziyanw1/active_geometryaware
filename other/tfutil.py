@@ -220,4 +220,4 @@ def batchsize(tensor):
     return int(tuple(tensor.get_shape())[0])
 
 def batchdim(tensor):
-    return list(tensor.shape)[0]
+    return tf.unstack(tf.shape(tensor))[0]

@@ -11,6 +11,8 @@ import random
 import other
 import time
 
+unp = other.unproject
+
 t0 = time.time()
 
 const = other.constants
@@ -93,6 +95,7 @@ FLAGS.batch_size = 1
 #########
 
 const.S = FLAGS.voxel_resolution
+const.RESOLUTION = FLAGS.resolution
 
 const.DIST_TO_CAM = 4.0
 const.NEAR_PLANE = 3.0
@@ -148,19 +151,11 @@ vox = mem.read_vox(voxel_name, transpose = False)
 vox = np.expand_dims(vox, axis = 0)
 vox = np.expand_dims(vox, axis = 4)
 
-def make_rotation_object(az0, el0, az1, el1):
-    #returns object which can be used to rotate view 1 -> 0
-    #see vs/nets.translate_views for reference implementation
+rotation_obj = unp.make_rotation_object(az0, el0, az1, el1)
 
-    dtheta = az1 - az0
+rotation_obj = unp.stack_rotation_objects([rotation_obj])
 
-    r1 = other.voxel.get_transform_matrix(theta = 0.0, phi = -el1)
-    r2 = other.voxel.get_transform_matrix(theta = dtheta, phi = el0)
-    
-    return (r1, r2)
-
-rotation_obj = make_rotation_object(az0, el0, az1, el1)
-gt_rotation = make_rotation_object(az0, el0, 0.0, 0.0)
+gt_rotation = unp.make_rotation_object(az0, el0, 0.0, 0.0)
 
 #stuff everything into tensors and do all required data preprocessing
 
@@ -175,12 +170,13 @@ def make_tensors_for_raw_inputs(rgb, invz, mask):
     mask = np.expand_dims(mask, axis = 0)
     invz = np.expand_dims(invz, axis = 0)
 
-    rgb_ = tf.placeholder(shape = rgb.shape, dtype = tf.float32)
-    invz_ = tf.placeholder(shape = invz.shape, dtype = tf.float32)
-    mask_ = tf.placeholder(shape = mask.shape, dtype = tf.float32)
-    #rgb = tf.constant(rgb, dtype = tf.float32)
-    #invz = tf.constant(invz, dtype = tf.float32)
-    #mask = tf.constant(mask, dtype = tf.float32)
+    #getshape = lambda x: (None,) + x.shape[1:]
+    getshape = lambda x: (1,) + x.shape[1:]
+    make_ph = lambda x: tf.placeholder(shape = getshape(x), dtype = tf.float32)
+
+    rgb_ = make_ph(rgb)
+    invz_ = make_ph(invz)
+    mask_ = make_ph(mask)
 
     depth = 1.0/(invz_+const.eps)
     depth *= 2.0    
@@ -202,31 +198,9 @@ vox = tf.constant(vox, dtype = tf.float32)
 
 ###########
 
-#shapes:
-
-#depth: BS x H x W x 1
-#mask: BS x H x W x 1
-#additional: BS x H x W x K
-
-def unproject_and_rotate(depth, mask, additional, rotation = None):
-
-    #order of concate is important
-    inputs = tf.concat([mask, depth - const.DIST_TO_CAM, additional], axis = 3)
-    inputs = tf.image.resize_images(inputs, (const.S, const.S))
-
-    unprojected = other.nets.unproject(inputs)
-
-    if rotation is not None:
-        rotated = other.voxel.rotate_voxel(unprojected, rotation[0])
-        rotated = other.voxel.rotate_voxel(rotated, rotation[1])
-    else:
-        rotated = unprojected
-
-    return rotated
-
-out0 = unproject_and_rotate(depth0, mask0, rgb0, None)
-out1 = unproject_and_rotate(depth1, mask1, rgb1, None)
-out2 = unproject_and_rotate(depth1, mask1, rgb1, rotation_obj)
+out0 = unp.unproject_and_rotate(depth0, mask0, rgb0, None)
+out1 = unp.unproject_and_rotate(depth1, mask1, rgb1, None)
+out2 = unp.unproject_and_rotate(depth1, mask1, rgb1, rotation_obj)
 
 #these can be fed into the voxel net as follows:
 prediction = other.nets.voxel_net_3d(out0)
@@ -245,30 +219,10 @@ gt_vox = other.voxel.rotate_voxel(gt_vox, gt_rotation[1])
 
 #### some postprocessing, so that we can view the unprojected voxels and check for reasonableness
 
-proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
-
-def flatten(voxels):
-    H = FLAGS.resolution
-    W = FLAGS.resolution            
-            
-    pred_depth = other.voxel.voxel2depth_aligned(voxels)
-    pred_mask = other.voxel.voxel2mask_aligned(voxels)
-        
-    #replace bg with grey
-    hard_mask = tf.cast(pred_mask > 0.5, tf.float32)
-    pred_depth *= hard_mask
-
-    pred_depth += const.DIST_TO_CAM * (1.0 - hard_mask)
-
-    pred_depth = tf.image.resize_images(pred_depth, (H, W))
-    pred_mask = tf.image.resize_images(pred_mask, (H, W))
-    return pred_depth, pred_mask
-
-out_depth0, out_mask0 = flatten(proj_and_post(outline0))
-out_depth1, out_mask1 = flatten(proj_and_post(outline1))
-out_depth2, out_mask2 = flatten(proj_and_post(outline2))
-out_depth3, out_mask3 = flatten(proj_and_post(gt_vox))
-#out_depth3, out_mask3 = flatten(other.voxel.project_voxel(gt_vox))
+out_depth0, out_mask0 = unp.flatten(unp.project_and_postprocess(outline0))
+out_depth1, out_mask1 = unp.flatten(unp.project_and_postprocess(outline1))
+out_depth2, out_mask2 = unp.flatten(unp.project_and_postprocess(outline2))
+out_depth3, out_mask3 = unp.flatten(unp.project_and_postprocess(gt_vox))
 
 ops_to_run = {
     'depth0': depth0,

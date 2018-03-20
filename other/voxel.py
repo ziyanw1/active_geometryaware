@@ -90,7 +90,9 @@ def transformer(voxels,
 
         """
         with tf.variable_scope('_interpolate'):
-            num_batch = im.get_shape().as_list()[0]
+            #num_batch = im.get_shape().as_list()[0]
+            num_batch = tfutil.batchdim(im)
+            
             depth = im.get_shape().as_list()[1]
             height = im.get_shape().as_list()[2]
             width = im.get_shape().as_list()[3]
@@ -368,7 +370,9 @@ def transformer(voxels,
 
     def _transform(theta, input_dim, out_size, z_near, z_far):
         with tf.variable_scope('_transform'):
-            num_batch = input_dim.get_shape().as_list()[0]
+            #num_batch = input_dim.get_shape().as_list()[0]
+            num_batch = tfutil.batchdim(input_dim)
+            
             num_channels = input_dim.get_shape().as_list()[4]
             theta = tf.reshape(theta, (-1, 4, 4))
             theta = tf.cast(theta, 'float32')
