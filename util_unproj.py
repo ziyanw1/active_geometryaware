@@ -52,7 +52,7 @@ class unproject_tools:
         inputs = tf.concat([mask, depth - self.const.DIST_TO_CAM, additional], axis = 3)
         inputs = tf.image.resize_images(inputs, (self.const.S, self.const.S))
     
-        unprojected = other.nets.unproject(inputs)
+        unprojected = other.unproject.unproject(inputs)
     
         if rotation is not None:
             rotated = other.voxel.rotate_voxel(unprojected, rotation[0])
@@ -95,6 +95,6 @@ class unproject_tools:
         inputs = tf.concat([mask_batch, depth_batch - self.const.DIST_TO_CAM, additional_batch], axis = 3)
         inputs = tf.image.resize_images(inputs, (self.const.S, self.const.S))
     
-        unprojected = other.nets.unproject(inputs)
+        unprojected = other.unproject.unproject(inputs)
         
         return unprojected
