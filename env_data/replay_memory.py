@@ -345,7 +345,7 @@ class ReplayMemory():
 
             azim_batch[b_idx, ...] = np.asarray(data_.states[0])
             elev_batch[b_idx, ...] = np.asarray(data_.states[1])
-            actions_batch[b_idx, ...] = np.asarray(data_.actions)
+            actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
             vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)

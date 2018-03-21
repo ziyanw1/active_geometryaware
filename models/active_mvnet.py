@@ -34,7 +34,7 @@ class ActiveMVnet(object):
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_batch')
         self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
-        self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1], name='action_batch')
+        self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
         self.reward_batch = tf.placeholder(dtype=tf.float32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1], name='reward_batch')
         ## inputs/outputs for aggregtor
 
@@ -100,7 +100,7 @@ class ActiveMVnet(object):
 
                 net_vox = slim.conv3d(vox, 64, kernel_size=3, stride=1, padding='SAME', scope='vox_conv1')
                 net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=1, padding='SAME', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
                 net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
                 net_vox = slim.conv3d(net_vox, 512, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
@@ -226,11 +226,11 @@ class ActiveMVnet(object):
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
-            self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7, trainable=self.is_training,
+            self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
                 if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
-            self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7, trainable=self.is_training,
+            self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7,
                 if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
         
@@ -245,7 +245,7 @@ class ActiveMVnet(object):
             self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm_use)
             self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
             self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
-                trainable=self.is_training, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+                if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
 
     
     def _create_loss(self):
@@ -255,7 +255,7 @@ class ActiveMVnet(object):
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[0, 2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, name='recon_loss')
         ## create reinforce loss
-        self.action_batch = collapse(self.action_list_batch)
+        self.action_batch = collapse_dims(self.action_list_batch)
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
         #self.loss = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
