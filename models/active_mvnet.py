@@ -43,7 +43,19 @@ class ActiveMVnet(object):
         self.vox_batch = tf.placeholder(dtype=tf.float32,
             shape=[FLAGS.batch_size, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
             name='vox_batch') ## [BS, V, V, V]
+        self.vox_test = tf.placeholder(dtype=tf.float32,
+            shape=[1, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
+            name='vox_batch') ## [BS, V, V, V]
         self.vox_list_batch = tf.tile(tf.expand_dims(self.vox_batch, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
+        self.vox_list_test = tf.tile(tf.expand_dims(self.vox_test, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
+
+        ## TEST: inputs for policy network of active camera
+        self.RGB_list_test = tf.placeholder(dtype=tf.float32,
+            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3], name='RGB_list_test')
+        self.invZ_list_test = tf.placeholder(dtype=tf.float32,
+            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_test')
+        self.mask_list_test = tf.placeholder(dtype=tf.float32,
+            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_test')
 
         self._create_network()
         self._create_loss()
@@ -206,7 +218,9 @@ class ActiveMVnet(object):
                 #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv3')
         
                 ## the input for convgru should be in shape of [bs, episode_len, vox_reso, vox_reso, vox_reso, ch]
-                net_unproj = uncollapse_dims(net_unproj, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+                #net_unproj = uncollapse_dims(net_unproj, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+                net_unproj = uncollapse_dims(net_unproj, unproj_grids.get_shape().as_list()[0]/self.FLAGS.max_episode_length, 
+                    self.FLAGS.max_episode_length)
                 net_pool_grid, _ = convgru(net_unproj, filters=channels) ## should be shape of [bs, len, vox_reso x 3, ch] 
 
         return net_pool_grid
@@ -218,18 +232,28 @@ class ActiveMVnet(object):
 
     def _create_network(self):
         self.RGB_list_batch_norm = tf.subtract(self.RGB_list_batch, 0.5)
+        self.RGB_list_test_norm = tf.subtract(self.RGB_list_test, 0.5)
 
         ## TODO: unproj depth list and merge them using aggregator
         ## collapse data from [BS, EP, H, W, CH] to [BSxEP, H, W, CH]
+        ## --------------- train -------------------
         self.invZ_batch = collapse_dims(self.invZ_list_batch)
         self.mask_batch = collapse_dims(self.mask_list_batch)
         self.RGB_batch_norm = collapse_dims(self.RGB_list_batch_norm)
+        ## --------------- train -------------------
+        ## --------------- test  -------------------
+        self.invZ_test = collapse_dims(self.invZ_list_test)
+        self.mask_test = collapse_dims(self.mask_list_test)
+        self.RGB_test_norm = collapse_dims(self.RGB_list_test_norm)
+        ## --------------- test  -------------------
         with tf.device('/gpu:0'):
             ## [BSxEP, V, V, V, CH]
             self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm)
+            self.unproj_grid_test = self.unproj_net.unproject_batch(self.invZ_test, self.mask_test, self.RGB_test_norm)
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
+            ## --------------- train -------------------
             self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
                 if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
 
@@ -237,10 +261,21 @@ class ActiveMVnet(object):
             self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7,
                 if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            ## --------------- train -------------------
+            ## --------------- test  -------------------
+            self.vox_feat_list_test = self._create_aggregator64(self.unproj_grid_test, channels=7,
+                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='aggr_64')
+
+            self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
+            self.vox_pred_test, vox_test_logits = self._create_unet3d(self.vox_feat_test, channels=7,
+                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='unet_3d')
+            self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
+            ## --------------- test  -------------------
         
         ## create active agent
         with tf.device('/gpu:0'):
             ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do use episode end to train
+            ## --------------- train -------------------
             self.RGB_list_batch_norm_use, _ = tf.split(self.RGB_list_batch_norm, 
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
             self.vox_feat_list_use, _ = tf.split(self.vox_feat_list, 
@@ -250,14 +285,34 @@ class ActiveMVnet(object):
             self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
             self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
                 if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+            ## --------------- train -------------------
+            ## --------------- test  -------------------
+            self.RGB_list_test_norm_use, _ = tf.split(self.RGB_list_test_norm,
+                [self.FLAGS.max_episode_length-1, 1], axis=1)
+            self.vox_feat_list_test_use, _ = tf.split(self.vox_feat_list_test,
+                [self.FLAGS.max_episode_length-1, 1], axis=1)
+            ## collapse input for easy inference instead of inference multiple times
+            self.RGB_use_test = collapse_dims(self.RGB_list_test_norm_use)
+            self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test_use)
+            self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
+                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+            ## --------------- test  -------------------
 
     
     def _create_loss(self):
         ## create reconstruction loss
+        ## --------------- train -------------------
         recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_batch,
             logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
+        ## --------------- train -------------------
+        ## --------------- test  -------------------
+        recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
+            logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
+        self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, name='recon_loss_list_test')
+        self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
+        ## --------------- test  -------------------
 
         def process_loss_to_reward(loss_list_batch, gamma, max_episode_len):
             
@@ -293,6 +348,8 @@ class ActiveMVnet(object):
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1)
+        #self.reward_test_list, self.reward_raw_test = process_loss_to_reward(self.recon_loss_list_test, self.FLAGS.gamma,
+        #    self.FLAGS.max_episode_length-1)
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
