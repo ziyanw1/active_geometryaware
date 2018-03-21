@@ -98,11 +98,11 @@ class ActiveMVnet(object):
                 net_rgb = slim.conv2d(net_rgb, 256, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
-                net_vox = slim.conv3d(vox, 64, kernel_size=[3,3], stride=[1,1], padding='SAME', scope='vox_conv1')
-                net_vox = slim.conv3d(net_vox, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=[3,3], stride=[1,1], padding='SAME', scope='vox_conv3')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='vox_conv4')
-                net_vox = slim.conv3d(net_vox, 512, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='vox_conv5')
+                net_vox = slim.conv3d(vox, 64, kernel_size=3, stride=1, padding='SAME', scope='vox_conv1')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
+                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=1, padding='SAME', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 512, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
@@ -227,19 +227,38 @@ class ActiveMVnet(object):
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
             self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7, trainable=self.is_training,
-                scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
+                if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
             self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7, trainable=self.is_training,
-                scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
+                if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+        
+        ## create active agent
+        with tf.device('/gpu:0'):
+            ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do use episode end to train
+            self.RGB_list_batch_norm_use, _ = tf.split(self.RGB_list_batch_norm, 
+                [self.FLAGS.max_episode_length-1, 1], axis=1)
+            self.vox_feat_list_use, _ = tf.split(self.vox_feat_list, 
+                [self.FLAGS.max_episode_length-1, 1], axis=1)
+            ## collapse input for easy inference instead of inference multiple times
+            self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm_use)
+            self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
+            self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
+                trainable=self.is_training, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
 
     
     def _create_loss(self):
+        ## create reconstruction loss
         recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_batch,
             logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[0, 2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, name='recon_loss')
+        ## create reinforce loss
+        self.action_batch = collapse(self.action_list_batch)
+        self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
+        self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
+        #self.loss = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):
        

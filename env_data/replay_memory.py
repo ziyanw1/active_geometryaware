@@ -336,7 +336,7 @@ class ReplayMemory():
             dtype=np.float32)
         azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
         elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
-        actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
+        actions_batch = np.zeros((batch_size, self.max_episode_length-1, 1), dtype=np.float32)
 
         for b_idx in range(batch_size):
             higher_bound = min(self.count, self.mem_length)
