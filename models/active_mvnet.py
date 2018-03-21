@@ -10,6 +10,7 @@ from env_data.replay_memory import ReplayMemory
 from env_data.shapenet_env import ShapeNetEnv, trajectData  
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 from util_unproj import unproject_tools 
+import other
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
@@ -91,18 +92,18 @@ class ActiveMVnet(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
                 
-                net_rgb = slim.conv2d(rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv1')
-                net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv2')
-                net_rgb = slim.conv2d(net_rgb, 256, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv3')
-                net_rgb = slim.conv2d(net_rgb, 256, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv4')
-                net_rgb = slim.conv2d(net_rgb, 256, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv5')
+                net_rgb = slim.conv2d(rgb, 32, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv1')
+                net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv2')
+                net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv3')
+                net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv4')
+                net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
-                net_vox = slim.conv3d(vox, 64, kernel_size=3, stride=1, padding='SAME', scope='vox_conv1')
-                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
-                net_vox = slim.conv3d(net_vox, 512, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
+                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=1, padding='SAME', scope='vox_conv1')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
+                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
@@ -138,22 +139,22 @@ class ActiveMVnet(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
 
-                net_down1 = slim.conv3d(vox_feat, 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv1')
-                net_down2 = slim.conv3d(net_down1, 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv2')
-                net_down3 = slim.conv3d(net_down2, 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
-                net_down4 = slim.conv3d(net_down3, 512, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
-                net_down5 = slim.conv3d(net_down4, 512, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
+                net_down1 = slim.conv3d(vox_feat, 16, kernel_size=4, stride=2, padding='SAME', scope='unet_conv1')
+                net_down2 = slim.conv3d(net_down1, 32, kernel_size=4, stride=2, padding='SAME', scope='unet_conv2')
+                net_down3 = slim.conv3d(net_down2, 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
+                net_down4 = slim.conv3d(net_down3, 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
+                net_down5 = slim.conv3d(net_down4, 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
 
-                net_up4 = slim.conv3d_transpose(net_down5, 512, kernel_size=4, stride=2, padding='SAME', \
+                net_up4 = slim.conv3d_transpose(net_down5, 128, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv4')
                 net_up4_ = tf.concat([net_up4, net_down4], axis=-1)
-                net_up3 = slim.conv3d_transpose(net_up4_, 256, kernel_size=4, stride=2, padding='SAME', \
+                net_up3 = slim.conv3d_transpose(net_up4_, 64, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv3')
                 net_up3_ = tf.concat([net_up3, net_down3], axis=-1)
-                net_up2 = slim.conv3d_transpose(net_up3_, 128, kernel_size=4, stride=2, padding='SAME', \
+                net_up2 = slim.conv3d_transpose(net_up3_, 32, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv2')
                 net_up2_ = tf.concat([net_up2, net_down2], axis=-1)
-                net_up1 = slim.conv3d_transpose(net_up2_, 64, kernel_size=4, stride=2, padding='SAME', \
+                net_up1 = slim.conv3d_transpose(net_up2_, 16, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv1')
                 net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
                 net_up0 = slim.conv3d_transpose(net_up1_, channels, kernel_size=4, stride=2, padding='SAME', \
@@ -196,7 +197,7 @@ class ActiveMVnet(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
                 
-                net_unproj = slim.conv3d(unproj_grids, 32, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
+                net_unproj = slim.conv3d(unproj_grids, 16, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
                 #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv2')
                 #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv3')
         
@@ -222,7 +223,6 @@ class ActiveMVnet(object):
         with tf.device('/gpu:0'):
             ## [BSxEP, V, V, V, CH]
             self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm)
-            
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
@@ -252,18 +252,53 @@ class ActiveMVnet(object):
         ## create reconstruction loss
         recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_batch,
             logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
-        self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[0, 2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
-        self.recon_loss = tf.reduce_sum(self.recon_loss_list, name='recon_loss')
+        self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
+        self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
+
+        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len):
+            
+            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
+            reward_batch_list = tf.get_variable(name='reward_batch_list', shape=reward_raw_batch.get_shape(),
+                dtype=tf.float32, initializer=tf.zeros_initializer)
+
+            batch_size = loss_list_batch.get_shape().as_list()[0]
+
+            max_episode_len = 1
+            update_list = []
+            ind_r_list = []
+            ind_u_list = []
+            for i in range(max_episode_len):
+                for j in range(i, max_episode_len):
+                    update_r = reward_raw_batch * (gamma**(j-i))
+                    indices_r = [range(batch_size), np.ones((batch_size), dtype=np.int32)*i]
+                    indices_u = [range(batch_size), np.ones((batch_size), dtype=np.int32)*j]
+                    #print reward_raw_batch.get_shape().as_list()
+                    #print update_r.get_shape().as_list()
+                    #print indices_r.get_shape().as_list()
+                    #sys.exit()
+                    #reward_batch_list[:, i] = reward_batch_list[:, i] + reward_raw_batch[:, j] * (gamma**j) 
+                    reward_batch_list = tf.scatter_add(reward_batch_list, tf.constant(indices_r),
+                    tf.gather(update_r, tf.constant(indices_u)),
+                        name='scatter_add_{}_{}'.format(i, j))
+
+            return reward_batch_list, reward_raw_batch
+
+        self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
+            self.FLAGS.max_episode_length-1)
+            
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
-        #self.loss = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
+        self.reward_batch = collapse_dims(self.reward_raw_batch)
+        self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):
        
         aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
         unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
+        dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
+
         if self.FLAGS.if_constantLr:
             self.learning_rate = self.FLAGS.learning_rate
             #self._log_string(tf_util.toGreen('===== Using constant lr!'))
@@ -276,6 +311,8 @@ class ActiveMVnet(object):
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var, global_step=self.counter)  
+        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
+            global_step=self.counter)
 
     #def _create_summary(self):
     #    if self.FLAGS.is_training:
