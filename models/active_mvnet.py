@@ -92,14 +92,14 @@ class ActiveMVnet(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
                 
-                net_rgb = slim.conv2d(rgb, 32, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv1')
-                net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv2')
+                net_rgb = slim.conv2d(rgb, 16, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv1')
+                net_rgb = slim.conv2d(net_rgb, 32, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv2')
                 net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv3')
-                net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv4')
+                net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv4')
                 net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='SAME', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
-                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=1, padding='SAME', scope='vox_conv1')
+                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='SAME', scope='vox_conv1')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
                 net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
                 net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
@@ -107,7 +107,7 @@ class ActiveMVnet(object):
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
-                net_feat = slim.fully_connected(net_feat, 4096, scope='fc6')
+                net_feat = slim.fully_connected(net_feat, 2048, scope='fc6')
                 net_feat = slim.fully_connected(net_feat, 4096, scope='fc7')
                 logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, scope='fc8')
 
@@ -157,11 +157,15 @@ class ActiveMVnet(object):
                 net_up1 = slim.conv3d_transpose(net_up2_, 16, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv1')
                 net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
+                #net_out_ = slim.conv3d(net_up1_, 1, kernel_size=4, stride=2, padding='SAME', \
+                #    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
+                ## heavy load
                 net_up0 = slim.conv3d_transpose(net_up1_, channels, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv0')
                 net_up0_ = tf.concat([net_up0, vox_feat], axis=-1)
                 net_out_ = slim.conv3d(net_up0_, 1, kernel_size=3, stride=1, padding='SAME', \
                     activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
+                ## heavy load
                 #net_up2_ = tf.add(net_up2, net_down2)
                 #net_up1 = slim.conv3d_transpose(net_up2_, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', \
                 #    scope='unet_deconv1')
@@ -269,19 +273,23 @@ class ActiveMVnet(object):
             ind_u_list = []
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
-                    update_r = reward_raw_batch * (gamma**(j-i))
-                    indices_r = [range(batch_size), np.ones((batch_size), dtype=np.int32)*i]
-                    indices_u = [range(batch_size), np.ones((batch_size), dtype=np.int32)*j]
+                    update_r = reward_raw_batch[:, j] * (gamma**(j-i))
+                    update_r = update_r + reward_batch_list[:, i] 
+                    update_r = tf.expand_dims(update_r, axis=1)
+                    #indices_r = [range(batch_size), np.ones((batch_size), dtype=np.int32)*i]
+                    #indices_u = [range(batch_size), np.ones((batch_size), dtype=np.int32)*j]
                     #print reward_raw_batch.get_shape().as_list()
                     #print update_r.get_shape().as_list()
                     #print indices_r.get_shape().as_list()
                     #sys.exit()
                     #reward_batch_list[:, i] = reward_batch_list[:, i] + reward_raw_batch[:, j] * (gamma**j) 
-                    reward_batch_list = tf.scatter_add(reward_batch_list, tf.constant(indices_r),
-                    tf.gather(update_r, tf.constant(indices_u)),
-                        name='scatter_add_{}_{}'.format(i, j))
+                    #reward_batch_list = tf.scatter_add(reward_batch_list, tf.constant(indices_r),
+                    #tf.gather(update_r, tf.constant(indices_u)),
+                    #    name='scatter_add_{}_{}'.format(i, j))
+                    reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
+                        reward_batch_list[:,i+1:]])
 
-            return reward_batch_list, reward_raw_batch
+            return 1000*reward_batch_list, 1000*reward_raw_batch
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1)
@@ -290,7 +298,7 @@ class ActiveMVnet(object):
         self.action_batch = collapse_dims(self.action_list_batch)
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
-        self.reward_batch = collapse_dims(self.reward_raw_batch)
+        self.reward_batch = collapse_dims(self.reward_batch_list)
         self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):
