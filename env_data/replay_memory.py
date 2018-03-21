@@ -330,11 +330,13 @@ class ReplayMemory():
     def get_batch_list(self, batch_size=4):
         
         RGB_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
+        invZ_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 1), dtype=np.float32)
+        mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 1), dtype=np.float32)
         vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
             dtype=np.float32)
         azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
         elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
-        actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
+        actions_batch = np.zeros((batch_size, self.max_episode_length-1, 1), dtype=np.float32)
 
         for b_idx in range(batch_size):
             higher_bound = min(self.count, self.mem_length)
@@ -343,17 +345,20 @@ class ReplayMemory():
 
             azim_batch[b_idx, ...] = np.asarray(data_.states[0])
             elev_batch[b_idx, ...] = np.asarray(data_.states[1])
-            actions_batch[b_idx, ...] = np.asarray(data_.actions)
-            reward_list_batch[b_idx, ...] = np.asarray(data_.rewards)
+            actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
             vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
 
             for l_idx in range(self.max_episode_length):
-                RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, ...] = self.read_png_to_uint8(
+                RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, :, :, 0] = self.read_png_to_uint8(
                     azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
+                invZ_list_batch[b_idx, l_idx, :, :, 0] = self.read_invZ(azim_batch[b_idx, l_idx],
+                    elev_batch[b_idx, l_idx], model_id)
+        mask_list_batch = (mask_list_batch > 0.5).astype(np.float32)
+        mask_list_batch *= (invZ_list_batch >= 1e-6)
 
-        return RGB_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
+        return RGB_list_batch, invZ_list_batch, mask_list_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
 
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma
@@ -390,3 +395,9 @@ class ReplayMemory():
         #rewards -= np.mean(rewards)
 
         return rewards
+
+class trajectData():
+    def __init__(self, states, actions, model_id):
+        self.states = states
+        self.actions = actions
+        self.model_id = model_id
