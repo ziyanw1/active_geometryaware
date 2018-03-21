@@ -322,10 +322,6 @@ class ActiveMVnet(object):
 
             batch_size = loss_list_batch.get_shape().as_list()[0]
 
-            max_episode_len = 1
-            update_list = []
-            ind_r_list = []
-            ind_u_list = []
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
                     update_r = reward_raw_batch[:, j] * (gamma**(j-i))
@@ -344,7 +340,7 @@ class ActiveMVnet(object):
                     reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
                         reward_batch_list[:,i+1:]])
 
-            return 1000*reward_batch_list, 1000*reward_raw_batch
+            return 10*reward_batch_list, 10*reward_raw_batch
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1)
