@@ -328,6 +328,18 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             ksizes = [4, 4, 4, 4, 8]
             strides = [2, 2, 2, 2, 1] 
             paddings = ['SAME'] * 4 + ['VALID']
+        elif const.NET3DARCH == 'marr_small':
+            # 32 -> 16 -> 8 -> 4 -> 1
+            dims = [d0, 2*d0, 4*d0, 8*d0]
+            ksizes = [4, 4, 4, 4] 
+            strides = [2, 2, 2, 1] 
+            paddings = ['SAME'] * 3 + ['VALID']            
+        elif const.NET3DARCH == 'marr_64':
+            # 64 -> 32 -> 16 -> 8 -> 4 -> 1
+            dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
+            ksizes = [4, 4, 4, 4, 4] 
+            strides = [2, 2, 2, 2, 1]
+            paddings = ['SAME'] * 4 + ['VALID']            
         else:
             raise Exception, 'unsupported network architecture'
 
@@ -364,7 +376,19 @@ def voxel_net_3d(inputs, aux = None, bn = True, outsize = 128, d0 = 16):
             strides = [1, 2, 2, 2, 2]
             ksizes = [8, 4, 4, 4, 4]
             paddings = ['VALID'] + ['SAME'] * 4
-            activation_fns = [tf.nn.relu] * 4 + [None] #important to have the last be none            
+            activation_fns = [tf.nn.relu] * 4 + [None] #important to have the last be none
+        elif const.NET3DARCH == 'marr_small':
+            chans = [4*d0, 2*d0, d0, 1]
+            strides = [1, 2, 2, 2]
+            ksizes = [4, 4, 4, 4]
+            paddings = ['VALID'] + ['SAME'] * 3
+            activation_fns = [tf.nn.relu] * 3 + [None] #important to have the last be none            
+        elif const.NET3DARCH == 'marr_64':
+            chans = [8*d0, 4*d0, 2*d0, d0, 1]
+            strides = [1, 2, 2, 2, 2]
+            ksizes = [4, 4, 4, 4, 4]
+            paddings = ['VALID'] + ['SAME'] * 4
+            activation_fns = [tf.nn.relu] * 4 + [None] #important to have the last be none
         else:
             raise Exception, 'unsupported network architecture'
 

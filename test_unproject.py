@@ -114,7 +114,7 @@ const.mode = 'train'
 const.rpvx_unsup = False
 const.force_batchnorm_trainmode = False
 const.force_batchnorm_testmode = False
-const.NET3DARCH = 'marr'
+const.NET3DARCH = 'marr_64'
 const.eps = 1e-6
 
 #########
