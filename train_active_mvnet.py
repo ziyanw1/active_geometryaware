@@ -88,16 +88,16 @@ flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
 flags.DEFINE_boolean("if_summary", True, "if save summary")
 flags.DEFINE_boolean("if_save", True, "if save")
-flags.DEFINE_integer("save_every_step", 2000, "save every ? step")
+flags.DEFINE_integer("save_every_step", 10, "save every ? step")
 flags.DEFINE_boolean("if_test", True, "if test")
-flags.DEFINE_integer("test_every_step", 2000, "test every ? step")
+flags.DEFINE_integer("test_every_step", 2, "test every ? step")
 flags.DEFINE_boolean("if_draw", True, "if draw latent")
 flags.DEFINE_integer("draw_every_step", 1000, "draw every ? step")
 flags.DEFINE_integer("vis_every_step", 1000, "draw every ? step")
 flags.DEFINE_boolean("if_init_i", False, "if init i from 0")
 flags.DEFINE_integer("init_i_to", 1, "init i to")
 flags.DEFINE_integer("test_iter", 2, "init i to")
-flags.DEFINE_integer("test_episode_num", 20, "init i to")
+flags.DEFINE_integer("test_episode_num", 2, "init i to")
 flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
@@ -105,6 +105,7 @@ flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each t
 flags.DEFINE_integer('mem_length', 10000000, 'memory length for replay memory')
 flags.DEFINE_integer('action_num', 8, 'number of actions')
 flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
+flags.DEFINE_integer('burn_in_iter', 10, 'burn in iteration for MVnet')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
@@ -180,6 +181,18 @@ def select_action(agent, rgb, invZ, mask, idx, is_training=True):
         a_idx = np.argmax(action_prob)
     return a_idx
 
+def predict_vox_list(agent, rgb, invZ, mask, vox_gt):
+    feed_dict = {agent.is_training:False, agent.RGB_list_test: rgb[None, ...], agent.invZ_list_test: invZ[None, ...],
+        agent.mask_list_test: mask[None, ...], agent.vox_test: vox_gt[None, ...]}
+    
+    #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+    #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
+    #else:
+    #    return np.random.randint(low=0, high=FLAGS.action_num)
+    vox_test_list, recon_loss_list, rewards_test = agent.sess.run([agent.vox_pred_test, active_mv.recon_loss_list_test,
+        active_mv.reward_raw_test], feed_dict=feed_dict)
+    return vox_test_list, recon_loss_list, rewards_test 
+
 def train(active_mv):
     
     senv = ShapeNetEnv(FLAGS)
@@ -200,35 +213,24 @@ def train(active_mv):
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
 
-    ### for debug
-    for i in range(10):
-        input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
-        rgb_l_b = input_stuff[0]
-        print rgb_l_b.shape
-        invz_l_b = input_stuff[1]
-        mask_l_b = input_stuff[2]
-        vox_b = input_stuff[3]
-        action_l_b = input_stuff[6]
-        feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
-            active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
-        tic = time.time()
-        out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
-            active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
-            active_mv.loss_reinforce], feed_dict=feed_dict)
-        #out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss,
-        #    active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list,active_mv.reward_raw_batch,
-        #    ], feed_dict=feed_dict)
-        print 'unproject time: {}s'.format(time.time()-tic)
-        #print out_stuff[0].shape
-        print out_stuff[2]
-        print out_stuff[3]
-        print out_stuff[5]
-        print out_stuff[6]
-        print out_stuff[7]
-        #print out_stuff[5]
-        #print out_stuff[6]
-    #sys.exit()
-    ###
+    ### burn in(pretrain) for MVnet
+    if FLAGS.burn_in_iter > 0:
+        for i in range(FLAGS.burn_in_iter):
+            input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
+            rgb_l_b = input_stuff[0]
+            invz_l_b = input_stuff[1]
+            mask_l_b = input_stuff[2]
+            vox_b = input_stuff[3]
+            action_l_b = input_stuff[6]
+            feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
+                active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
+            tic = time.time()
+            out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
+                active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
+                active_mv.loss_reinforce], feed_dict=feed_dict)
+            log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, out_stuff[2], time.time()-tic))
+        #sys.exit()
+        ###
 
     for i_idx in range(FLAGS.max_iter):
         state, model_id = senv.reset(True)
@@ -283,18 +285,17 @@ def train(active_mv):
         feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
             active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
         tic = time.time()
-        #out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
-        #    active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list,active_mv.reward_raw_batch,
-        #    active_mv.opt_reinforce], feed_dict=feed_dict)
         out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss, active_mv.loss_reinforce,
             active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
-            active_mv.opt_recon, active_mv.opt_reinforce], feed_dict=feed_dict)
+            active_mv.opt_recon, active_mv.opt_reinforce, active_mv.merged_train], feed_dict=feed_dict)
         recon_loss = out_stuff[1]
         reinforce_loss = out_stuff[2]
+        summary_train = out_stuff[-1]
         mean_episode_reward = np.mean(np.sum(out_stuff[6], axis=1), axis=0)
         log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(i_idx,
             recon_loss/(FLAGS.max_episode_length*FLAGS.batch_size), mean_episode_reward, 
             reinforce_loss, time.time()-tic))
+        active_mv.train_writer.add_summary(summary_train, i_idx)
         #rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         #print 'reward_batch: {}'.format(reward_batch)
         #print 'rewards: {}'.format(rewards)
@@ -306,16 +307,16 @@ def train(active_mv):
         #tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
         #agent.train_writer.add_summary(merge_summary, i_idx)
 
-        #if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
-        #    save(agent, i_idx, i_idx, i_idx) 
+        if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
+            save(active_mv, i_idx, i_idx, i_idx) 
 
-        #if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-        #    eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(agent, FLAGS.test_episode_num, replay_mem)
-        #    tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, agent.train_writer)
-        #    tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, agent.train_writer)
-        #    tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, agent.train_writer)
+        if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
+            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem)
+            tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
+            tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
+            tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 
-def evaluate(agent, test_episode_num, replay_mem):
+def evaluate(active_mv, test_episode_num, replay_mem):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
@@ -328,46 +329,51 @@ def evaluate(agent, test_episode_num, replay_mem):
         state, model_id = senv.reset(True)
         actions = []
         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+        invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
+        mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
         R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
         vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
             dtype=np.float32)
 
-        RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
-        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
-        vox_temp = np.squeeze(vox_temp_list[0, ...])
+        RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+        #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+        #vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, is_training=False) 
-            actions.append(agent_action)
+            active_mv_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
+                is_training=False) 
+            actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
-            RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+            #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
+            #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+            #vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
             if done:
                 traj_state = state
                 traj_state[0] += [next_state[0]]
                 traj_state[1] += [next_state[1]]
-                rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
+                #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
                 #temp_traj = trajectData(traj_state, actions, rewards, model_id)
                 break
 
 
-        vox_final_list = np.squeeze(vox_temp_list)
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
+        vox_final_list, recon_loss_list, rewards_test = predict_vox_list(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt)
         vox_final_ = vox_final_list[-1, ...]
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
         final_IoU = replay_mem.calu_IoU(vox_final_, vox_gt)
-        final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
-        log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Loss: {:.4f}------'.format(
-            i_idx, np.sum(rewards), final_IoU, final_loss))
-        rewards_list.append(np.sum(rewards))
+        #final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
+        log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
+            i_idx, np.sum(rewards_test), final_IoU, recon_loss_list))
+        rewards_list.append(np.sum(rewards_test))
         IoU_list.append(final_IoU)
-        loss_list.append(final_loss)
+        loss_list.append(recon_loss_list)
 
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
