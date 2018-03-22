@@ -466,3 +466,101 @@ def voxel_encoder(inputs, aux, reuse):
         tf.summary.histogram('critic_out', net)
 
     return net
+
+
+def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train', freeze_decoder = False, d0 = 16):
+
+    input_size = list(inputs.get_shape())[1]
+    if input_size == 128:
+        arch = 'marr128'
+    elif input_size == 64:
+        arch = 'marr64'
+    elif input_size == 32:
+        arch = 'marr32'
+    else:
+        raise Exception, 'input size not supported'
+
+    if aux is not None:
+        assert tfutil.rank(aux) == 2
+        aux_dim = int(tuple(aux.get_shape())[1])
+
+    normalizer_params={'is_training': bn_trainmode, 
+                       'decay': 0.9,
+                       'epsilon': 1e-5,
+                       'scale': True,
+                       'updates_collections': None}
+
+    with slim.arg_scope([slim.conv3d, slim.conv3d_transpose],
+                        activation_fn=tf.nn.relu,
+                        normalizer_fn=slim.batch_norm if bn else None,
+                        normalizer_params=normalizer_params
+                        ):
+        
+        if arch == 'marr128':
+            # 128 -> 64 -> 32 -> 16 -> 8 -> 1
+            dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
+            ksizes = [4, 4, 4, 4, 8]
+            strides = [2, 2, 2, 2, 1] 
+            paddings = ['SAME'] * 4 + ['VALID']
+        elif arch == 'marr64':
+            # 64 -> 32 -> 16 -> 8 -> 4 -> 1
+            dims = [d0, 2*d0, 4*d0, 8*d0, 16*d0]
+            ksizes = [4, 4, 4, 4, 4] 
+            strides = [2, 2, 2, 2, 1]
+            paddings = ['SAME'] * 4 + ['VALID']            
+        elif arch == 'marr32':
+            # 32 -> 16 -> 8 -> 4 -> 1
+            dims = [d0, 2*d0, 4*d0, 8*d0]
+            ksizes = [4, 4, 4, 4] 
+            strides = [2, 2, 2, 1] 
+            paddings = ['SAME'] * 3 + ['VALID']            
+
+        net = inputs
+        skipcons = [net]
+        for i, (dim, ksize, stride, padding) in enumerate(zip(dims, ksizes, strides, paddings)):
+            net = slim.conv3d(net, dim, ksize, stride=stride, padding=padding)
+
+            skipcons.append(net)
+        
+        if aux is not None:
+            aux = tf.reshape(aux, (-1, 1, 1, 1, aux_dim))
+            net = tf.concat([aux, net], axis = 4)
+
+        if arch == 'marr128':
+            chans = [8*d0, 4*d0, 2*d0, d0, 1]
+            strides = [1, 2, 2, 2, 2]
+            ksizes = [8, 4, 4, 4, 4]
+            paddings = ['VALID'] + ['SAME'] * 4
+        elif arch == 'marr64':
+            chans = [8*d0, 4*d0, 2*d0, d0, 1]
+            strides = [1, 2, 2, 2, 2]
+            ksizes = [4, 4, 4, 4, 4]
+            paddings = ['VALID'] + ['SAME'] * 4
+        elif arch == 'marr32':
+            chans = [4*d0, 2*d0, d0, 1]
+            strides = [1, 2, 2, 2]
+            ksizes = [4, 4, 4, 4]
+            paddings = ['VALID'] + ['SAME'] * 3
+
+        decoder_trainable = not freeze_decoder
+
+        skipcons.pop() #we don't want the innermost layer as skipcon
+        
+        for i, (chan, stride, ksize, padding) in enumerate(zip(chans, strides, ksizes, paddings)):
+
+            net = slim.conv3d_transpose(
+                net, chan, ksize, stride=stride, padding=padding, trainable=decoder_trainable
+            )
+
+            #now concatenate on the skip-connection
+            net = tf.concat([net, skipcons.pop()], axis = 4)
+
+        #one last 1x1 conv to get the right number of output channels
+        net = slim.conv3d(
+            net, 1, 1, 1, padding='SAME', activation_fn = None,
+            normalizer_fn = None, trainable = decoder_trainable
+        )
+
+    net = tf.nn.sigmoid(net)
+
+    return net
