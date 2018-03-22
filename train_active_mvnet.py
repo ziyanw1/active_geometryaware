@@ -20,6 +20,7 @@ import sys
 import time
 import matplotlib.pyplot as plt
 import scipy.io as sio
+import scipy.misc as sm
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'models'))
@@ -28,9 +29,9 @@ sys.path.append(os.path.join(BASE_DIR, 'env_data'))
 import tf_util
 
 #from visualizers import VisVox
-from active_agent import ActiveAgent
+from active_mvnet import ActiveMVnet
 from shapenet_env import ShapeNetEnv
-from replay_memory_mvnet import ReplayMemory, trajectData
+from replay_memory import ReplayMemory, trajectData
 import psutil
 import gc
 import resource
@@ -57,12 +58,12 @@ flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
-flags.DEFINE_integer('resolution', 224, '')
-flags.DEFINE_integer('voxel_resolution', 32, '')
+flags.DEFINE_integer('resolution', 128, '')
+flags.DEFINE_integer('voxel_resolution', 64, '')
 flags.DEFINE_string('opt_step_name', 'opt_step', '')
 flags.DEFINE_string('loss_name', 'sketch_loss', '')
-flags.DEFINE_integer('batch_size', 16, 'Batch Size during training [default: 32]')
-flags.DEFINE_float('learning_rate', 1e-5, 'Initial learning rate [default: 0.001]') #used to be 3e-5
+flags.DEFINE_integer('batch_size', 4, 'Batch Size during training [default: 32]')
+flags.DEFINE_float('learning_rate', 1e-3, 'Initial learning rate [default: 0.001]') #used to be 3e-5
 flags.DEFINE_float('momentum', 0.95, 'Initial learning rate [default: 0.9]')
 flags.DEFINE_string('optimizer', 'adam', 'adam or momentum [default: adam]')
 flags.DEFINE_integer('decay_step', 5000000, 'Decay step for lr decay [default: 200000]')
@@ -100,10 +101,10 @@ flags.DEFINE_integer("test_episode_num", 20, "init i to")
 flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
-flags.DEFINE_integer('max_episode_length', 5, 'maximal episode length for each trajactory')
+flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
 flags.DEFINE_integer('mem_length', 10000000, 'memory length for replay memory')
 flags.DEFINE_integer('action_num', 8, 'number of actions')
-flags.DEFINE_integer('burn_in_length', 10000, 'burn in length for replay memory')
+flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
@@ -161,15 +162,16 @@ def restore_from_iter(ae, iter):
     ae.saver.restore(ae.sess, ckpt_path)
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
-def select_action(agent, rgb, vox, is_training=True):
-    feed_dict = {agent.is_training:False, agent.rgb_batch: rgb[None, ...], agent.vox_batch: vox[None, ...]}
+def select_action(agent, rgb, invZ, mask, idx, is_training=True):
+    feed_dict = {agent.is_training:False, agent.RGB_list_test: rgb[None, ...], agent.invZ_list_test: invZ[None, ...],
+        agent.mask_list_test: mask[None, ...]}
     
     #if np.random.uniform(low=0.0, high=1.0) > epsilon:
     #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
     #else:
     #    return np.random.randint(low=0, high=FLAGS.action_num)
-    stuff = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
-    action_prob = stuff[0][0]
+    stuff = agent.sess.run([agent.action_prob_test], feed_dict=feed_dict)
+    action_prob = stuff[0][idx]
     if is_training:
         a_response = np.random.choice(action_prob, p=action_prob)
 
@@ -178,11 +180,10 @@ def select_action(agent, rgb, vox, is_training=True):
         a_idx = np.argmax(action_prob)
     return a_idx
 
-def train(agent):
+def train(active_mv):
     
     senv = ShapeNetEnv(FLAGS)
     replay_mem = ReplayMemory(FLAGS)
-
 
     #### for debug
     #a = np.array([[1,0,1],[0,0,0]])
@@ -198,27 +199,60 @@ def train(agent):
     #epsilon = FLAGS.init_eps
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
+
+    ### for debug
+    for i in range(10):
+        input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
+        rgb_l_b = input_stuff[0]
+        print rgb_l_b.shape
+        invz_l_b = input_stuff[1]
+        mask_l_b = input_stuff[2]
+        vox_b = input_stuff[3]
+        action_l_b = input_stuff[6]
+        feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
+            active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
+        tic = time.time()
+        out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
+            active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
+            active_mv.loss_reinforce], feed_dict=feed_dict)
+        #out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss,
+        #    active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list,active_mv.reward_raw_batch,
+        #    ], feed_dict=feed_dict)
+        print 'unproject time: {}s'.format(time.time()-tic)
+        #print out_stuff[0].shape
+        print out_stuff[2]
+        print out_stuff[3]
+        print out_stuff[5]
+        print out_stuff[6]
+        print out_stuff[7]
+        #print out_stuff[5]
+        #print out_stuff[6]
+    #sys.exit()
+    ###
+
     for i_idx in range(FLAGS.max_iter):
         state, model_id = senv.reset(True)
         actions = []
         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
-        R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
-        vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-            dtype=np.float32)
-        vox_list = np.zeros((FLAGS.max_episode_length, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-            dtype=np.float32)
+        invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
+        mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
 
-        RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+        #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         ## TODO: 
         ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
         ## 2. update vox_feature_list using unproject and aggregator
         for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp) 
+            tic = time.time()
+            agent_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
-            RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+            log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, state[0][0], 
+                state[1][0], model_id, time.time()-tic))
+            #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
             ## 1. update vox_list using MVnet
             #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
@@ -229,7 +263,7 @@ def train(agent):
                 traj_state[1] += [next_state[1]]
                 ## TODO: 
                 ## 1. get reward by vox_list
-                rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
+                #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
                 temp_traj = trajectData(traj_state, actions, model_id)
                 replay_mem.append(temp_traj)
                 break
@@ -240,24 +274,46 @@ def train(agent):
         ## TODO: train
         ## 1. using given sequence data and ground truth voxel, train MVnet
         ## 2. for #max_episode_length times, train aggregator and agent policy network
+        input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
+        rgb_l_b = input_stuff[0]
+        invz_l_b = input_stuff[1]
+        mask_l_b = input_stuff[2]
+        vox_b = input_stuff[3]
+        action_l_b = input_stuff[6]
+        feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
+            active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
+        tic = time.time()
+        #out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
+        #    active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list,active_mv.reward_raw_batch,
+        #    active_mv.opt_reinforce], feed_dict=feed_dict)
+        out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss, active_mv.loss_reinforce,
+            active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
+            active_mv.opt_recon, active_mv.opt_reinforce], feed_dict=feed_dict)
+        recon_loss = out_stuff[1]
+        reinforce_loss = out_stuff[2]
+        mean_episode_reward = np.mean(np.sum(out_stuff[6], axis=1), axis=0)
+        log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(i_idx,
+            recon_loss/(FLAGS.max_episode_length*FLAGS.batch_size), mean_episode_reward, 
+            reinforce_loss, time.time()-tic))
         #rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         #print 'reward_batch: {}'.format(reward_batch)
         #print 'rewards: {}'.format(rewards)
-        feed_dict = {agent.is_training: True, agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
-            agent.action_batch: action_batch}
-        opt_train, merge_summary, loss = agent.sess.run([agent.opt, agent.merged_train, agent.loss], feed_dict=feed_dict)
-        log_string('+++++Iteration: {}, loss: {:.4f}, mean_reward: {:.4f}+++++'.format(i_idx, loss, np.mean(rewards)))
-        tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
-        agent.train_writer.add_summary(merge_summary, i_idx)
+        ## TODO train model and do logging & evaluation
+        #feed_dict = {agent.is_training: True, agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
+        #    agent.action_batch: action_batch}
+        #opt_train, merge_summary, loss = agent.sess.run([agent.opt, agent.merged_train, agent.loss], feed_dict=feed_dict)
+        #log_string('+++++Iteration: {}, loss: {:.4f}, mean_reward: {:.4f}+++++'.format(i_idx, loss, np.mean(rewards)))
+        #tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
+        #agent.train_writer.add_summary(merge_summary, i_idx)
 
-        if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
-            save(agent, i_idx, i_idx, i_idx) 
+        #if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
+        #    save(agent, i_idx, i_idx, i_idx) 
 
-        if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(agent, FLAGS.test_episode_num, replay_mem)
-            tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, agent.train_writer)
-            tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, agent.train_writer)
-            tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, agent.train_writer)
+        #if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
+        #    eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(agent, FLAGS.test_episode_num, replay_mem)
+        #    tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, agent.train_writer)
+        #    tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, agent.train_writer)
+        #    tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, agent.train_writer)
 
 def evaluate(agent, test_episode_num, replay_mem):
     senv = ShapeNetEnv(FLAGS)
@@ -467,10 +523,10 @@ if __name__ == "__main__":
     ##prepare_plot()
     #log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))
     ##### log writing
-    agent = ActiveAgent(FLAGS)
+    active_mv = ActiveMVnet(FLAGS)
     #if FLAGS.restore:
     #    restore(ae)
-    train(agent)
+    train(active_mv)
 
     # z_list = []
     # test_demo_render_z(ae, z_list)
