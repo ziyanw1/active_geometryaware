@@ -7,9 +7,16 @@
 #    --max_episode_length=4 --reward_type='IG' --learning_rate=1e-3
 
 python train_active_mvnet.py --is_training=True --task_name='active_mvnet_0322_seq4_IG_chair' \
-    --max_episode_length=4 --reward_type='IG' --learning_rate=1e-4 --burn_in_length=10 \
-    --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
-    --resolution=128 --category='03001627' --mem_length=1000
+     --max_episode_length=4 --reward_type='IG' --learning_rate=1e-4 --burn_in_length=10 \
+     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+     --resolution=128 --category='03001627' --mem_length=1000
+
+# example for training on a single chair model
+#python train_active_mvnet.py --is_training=True --task_name='active_mvnet_0322_seq4_IG_chair_single' \
+#    --max_episode_length=4 --reward_type='IG' --learning_rate=1e-4 --burn_in_length=10 \
+#    --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#    --resolution=128 --category='03001627' --mem_length=1000 \
+#    --train_filename_prefix='single' --val_filename_prefix='single' --test_filename_prefix='single'
 
 ### debug train single
 #CUDA_VISIBLE_DEVICES=1 python train_active_lsm.py --is_training=True --task_name='agent_0315_seq4_debug_single' \
