@@ -102,7 +102,7 @@ flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
-flags.DEFINE_integer('mem_length', 10000000, 'memory length for replay memory')
+flags.DEFINE_integer('mem_length', 1000, 'memory length for replay memory')
 flags.DEFINE_integer('action_num', 8, 'number of actions')
 flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
 flags.DEFINE_integer('burn_in_iter', 10, 'burn in iteration for MVnet')
@@ -251,9 +251,9 @@ def train(active_mv):
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
-            log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, state[0][0], 
-                state[1][0], model_id, time.time()-tic))
+            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id) 
+            log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
+                next_state[1], model_id, time.time()-tic))
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
             ## 1. update vox_list using MVnet
@@ -320,8 +320,6 @@ def evaluate(active_mv, test_episode_num, replay_mem):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
-    K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
-    K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
     rewards_list = []
     IoU_list = []
     loss_list = []
@@ -331,15 +329,12 @@ def evaluate(active_mv, test_episode_num, replay_mem):
         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
         invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
         mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
-        vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-            dtype=np.float32)
+        #R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+        #vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+        #    dtype=np.float32)
 
         RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
         invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
-        #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
-        #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
-        #vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
             active_mv_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
@@ -347,7 +342,7 @@ def evaluate(active_mv, test_episode_num, replay_mem):
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id) 
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
             #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
