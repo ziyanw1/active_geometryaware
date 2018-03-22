@@ -97,6 +97,8 @@ class ShapeNetEnv():
         elif action == 7:
             self.current_azim = np.mod(self.current_azim - 10, 360)
             self.current_elev = max(self.current_elev - 10, 10)
+        else:
+            raise Exception, 'bad action'
             
         self.step_count += 1
         if self.step_count == self.max_episode_length - 1:
