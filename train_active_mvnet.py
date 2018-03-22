@@ -167,8 +167,12 @@ def restore_from_iter(ae, iter):
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
 def select_action(agent, rgb, invZ, mask, idx, is_training=True):
-    feed_dict = {agent.is_training:False, agent.RGB_list_test: rgb[None, ...], agent.invZ_list_test: invZ[None, ...],
-        agent.mask_list_test: mask[None, ...]}
+    feed_dict = {
+        agent.is_training:False,
+        agent.RGB_list_test: rgb[None, ...],
+        agent.invZ_list_test: invZ[None, ...],
+        agent.mask_list_test: mask[None, ...],
+    }
     
     #if np.random.uniform(low=0.0, high=1.0) > epsilon:
     #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
@@ -184,9 +188,17 @@ def select_action(agent, rgb, invZ, mask, idx, is_training=True):
         a_idx = np.argmax(action_prob)
     return a_idx
 
-def predict_vox_list(agent, rgb, invZ, mask, vox_gt):
-    feed_dict = {agent.is_training:False, agent.RGB_list_test: rgb[None, ...], agent.invZ_list_test: invZ[None, ...],
-        agent.mask_list_test: mask[None, ...], agent.vox_test: vox_gt[None, ...]}
+def predict_vox_list(agent, rgb, invZ, mask, vox_gt, azimuth, elevation):
+    
+    feed_dict = {
+        agent.is_training:False,
+        agent.RGB_list_test: rgb[None, ...],
+        agent.invZ_list_test: invZ[None, ...],
+        agent.mask_list_test: mask[None, ...],
+        agent.vox_test: vox_gt[None, ...],
+        agent.azimuth_list_test: azimuth[None, ...],
+        agent.elevation_list_test: elevation[None, ...],        
+    }
     
     #if np.random.uniform(low=0.0, high=1.0) > epsilon:
     #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
@@ -224,9 +236,19 @@ def train(active_mv):
             invz_l_b = input_stuff[1]
             mask_l_b = input_stuff[2]
             vox_b = input_stuff[3]
+            azimuth_l_b = input_stuff[4]
+            elevation_l_b = input_stuff[5]        
             action_l_b = input_stuff[6]
-            feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
-                active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
+            feed_dict = {
+                active_mv.is_training: True,
+                active_mv.RGB_list_batch:rgb_l_b,
+                active_mv.invZ_list_batch:invz_l_b, 
+                active_mv.mask_list_batch:mask_l_b,
+                active_mv.vox_batch:vox_b,
+                active_mv.action_list_batch:action_l_b,
+                active_mv.azimuth_list_batch:azimuth_l_b,
+                active_mv.elevation_list_batch:elevation_l_b,                
+            }
             tic = time.time()
             out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
                 active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
@@ -284,9 +306,20 @@ def train(active_mv):
         invz_l_b = input_stuff[1]
         mask_l_b = input_stuff[2]
         vox_b = input_stuff[3]
+        azimuth_l_b = input_stuff[4]
+        elevation_l_b = input_stuff[5]        
         action_l_b = input_stuff[6]
-        feed_dict = {active_mv.is_training: True, active_mv.RGB_list_batch:rgb_l_b, active_mv.invZ_list_batch:invz_l_b, 
-            active_mv.mask_list_batch:mask_l_b, active_mv.vox_batch:vox_b, active_mv.action_list_batch:action_l_b}
+        feed_dict = {
+            active_mv.is_training: True,
+            active_mv.RGB_list_batch:rgb_l_b,
+            active_mv.invZ_list_batch:invz_l_b, 
+            active_mv.mask_list_batch:mask_l_b,
+            active_mv.vox_batch:vox_b,
+            active_mv.action_list_batch:action_l_b,
+            active_mv.azimuth_list_batch:azimuth_l_b,
+            active_mv.elevation_list_batch:elevation_l_b,                
+        }
+        
         tic = time.time()
         out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss, active_mv.loss_reinforce,
             active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
@@ -334,12 +367,19 @@ def evaluate(active_mv, test_episode_num, replay_mem):
         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
         invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
         mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
+        azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
+        elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
+        
         R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
         vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
             dtype=np.float32)
 
         RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+        
+        azimuth_temp_list[0, 0] = state[0][0]
+        elevation_temp_list[0, 0] = state[1][0]
+        
         #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
         #vox_temp = np.squeeze(vox_temp_list[0, ...])
@@ -349,8 +389,13 @@ def evaluate(active_mv, test_episode_num, replay_mem):
                 is_training=False) 
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
+            
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+            
+            azimuth_temp_list[e_idx, 0] = next_state[0]
+            elevation_temp_list[e_idx, 0] = next_state[1]
+            
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
             #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
@@ -366,7 +411,7 @@ def evaluate(active_mv, test_episode_num, replay_mem):
 
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
-        vox_final_list, recon_loss_list, rewards_test = predict_vox_list(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt)
+        vox_final_list, recon_loss_list, rewards_test = predict_vox_list(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt, azimuth_temp_list, elevation_temp_list)
         vox_final_ = vox_final_list[-1, ...]
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0

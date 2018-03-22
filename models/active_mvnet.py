@@ -35,6 +35,12 @@ class ActiveMVnet(object):
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_batch')
         self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
+        
+        self.azimuth_list_batch = tf.placeholder(dtype=tf.float32, 
+            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='azimuth_list_batch')
+        self.elevation_list_batch = tf.placeholder(dtype=tf.float32, 
+            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='elevation_list_batch')
+        
         self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
         ## inputs/outputs for aggregtor
 
@@ -56,6 +62,11 @@ class ActiveMVnet(object):
         self.mask_list_test = tf.placeholder(dtype=tf.float32,
             shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_test')
 
+        self.azimuth_list_test = tf.placeholder(dtype=tf.float32, 
+            shape=[1, FLAGS.max_episode_length, 1], name='azimuth_list_test')
+        self.elevation_list_test = tf.placeholder(dtype=tf.float32, 
+            shape=[1, FLAGS.max_episode_length, 1], name='elevation_list_test')
+        
         self._create_network()
         self._create_loss()
 
@@ -237,16 +248,20 @@ class ActiveMVnet(object):
         self.invZ_batch = collapse_dims(self.invZ_list_batch)
         self.mask_batch = collapse_dims(self.mask_list_batch)
         self.RGB_batch_norm = collapse_dims(self.RGB_list_batch_norm)
+        self.azimuth_batch = collapse_dims(self.azimuth_list_batch)
+        self.elevation_batch = collapse_dims(self.elevation_list_batch)        
         ## --------------- train -------------------
         ## --------------- test  -------------------
         self.invZ_test = collapse_dims(self.invZ_list_test)
         self.mask_test = collapse_dims(self.mask_list_test)
         self.RGB_test_norm = collapse_dims(self.RGB_list_test_norm)
+        self.azimuth_test = collapse_dims(self.azimuth_list_test)
+        self.elevation_test = collapse_dims(self.elevation_list_test)        
         ## --------------- test  -------------------
         with tf.device('/gpu:0'):
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm)
-            self.unproj_grid_test = self.unproj_net.unproject_batch(self.invZ_test, self.mask_test, self.RGB_test_norm)
+            self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm, self.azimuth_batch, self.elevation_batch)
+            self.unproj_grid_test = self.unproj_net.unproject_batch(self.invZ_test, self.mask_test, self.RGB_test_norm, self.azimuth_test, self.elevation_test)
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
@@ -299,7 +314,10 @@ class ActiveMVnet(object):
     def _create_loss(self):
         ## create reconstruction loss
         ## --------------- train -------------------
-        recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_batch,
+
+        ground_truth_voxels = self.vox_list_batch #rotate this
+        
+        recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=ground_truth_voxels, 
             logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')

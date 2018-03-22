@@ -334,8 +334,8 @@ class ReplayMemory():
         mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 1), dtype=np.float32)
         vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
             dtype=np.float32)
-        azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
-        elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
+        azim_batch = np.zeros((batch_size, self.max_episode_length, 1), dtype=np.float32)
+        elev_batch = np.zeros((batch_size, self.max_episode_length, 1), dtype=np.float32)
         actions_batch = np.zeros((batch_size, self.max_episode_length-1, 1), dtype=np.float32)
 
         for b_idx in range(batch_size):
@@ -343,8 +343,8 @@ class ReplayMemory():
             rand_idx = np.random.randint(0, higher_bound)
             data_ = self.mem_list[rand_idx]
 
-            azim_batch[b_idx, ...] = np.asarray(data_.states[0])
-            elev_batch[b_idx, ...] = np.asarray(data_.states[1])
+            azim_batch[b_idx, ..., 0] = np.asarray(data_.states[0])
+            elev_batch[b_idx, ..., 0] = np.asarray(data_.states[1])
             actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))

@@ -88,7 +88,7 @@ class unproject_tools:
     
         return rgb_, depth, mask_, feed_dict
     
-    def unproject_batch(self, invZ_batch, mask_batch, additional_batch):
+    def unproject_batch(self, invZ_batch, mask_batch, additional_batch, azimuth_batch, elevation_batch):
         depth_batch = 1.0/(invZ_batch+self.const.eps)
         depth_batch *= 2.0    
         depth_batch = depth_batch * mask_batch + self.const.DIST_TO_CAM * (1.0-mask_batch)
