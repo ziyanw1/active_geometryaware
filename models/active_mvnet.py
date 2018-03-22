@@ -36,7 +36,6 @@ class ActiveMVnet(object):
         self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
         self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
-        #self.reward_batch = tf.placeholder(dtype=tf.float32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1], name='reward_batch')
         ## inputs/outputs for aggregtor
 
         ## inputs/outputs for MVnet
@@ -59,12 +58,10 @@ class ActiveMVnet(object):
 
         self._create_network()
         self._create_loss()
-        #self._create_policy_net()
-        #self._create_loss()
 
         if FLAGS.is_training:
             self._create_optimizer()
-        #self._create_summary()
+        self._create_summary()
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
@@ -321,22 +318,14 @@ class ActiveMVnet(object):
                 dtype=tf.float32, initializer=tf.zeros_initializer)
 
             batch_size = loss_list_batch.get_shape().as_list()[0]
-
+            
+            ## decayed sum of future possible rewards
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
                     update_r = reward_raw_batch[:, j] * (gamma**(j-i))
                     update_r = update_r + reward_batch_list[:, i] 
                     update_r = tf.expand_dims(update_r, axis=1)
-                    #indices_r = [range(batch_size), np.ones((batch_size), dtype=np.int32)*i]
-                    #indices_u = [range(batch_size), np.ones((batch_size), dtype=np.int32)*j]
-                    #print reward_raw_batch.get_shape().as_list()
-                    #print update_r.get_shape().as_list()
-                    #print indices_r.get_shape().as_list()
-                    #sys.exit()
-                    #reward_batch_list[:, i] = reward_batch_list[:, i] + reward_raw_batch[:, j] * (gamma**j) 
-                    #reward_batch_list = tf.scatter_add(reward_batch_list, tf.constant(indices_r),
-                    #tf.gather(update_r, tf.constant(indices_u)),
-                    #    name='scatter_add_{}_{}'.format(i, j))
+                    ## update reward batch list
                     reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
                         reward_batch_list[:,i+1:]])
 
@@ -376,10 +365,14 @@ class ActiveMVnet(object):
         self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
             global_step=self.counter)
 
-    #def _create_summary(self):
-    #    if self.FLAGS.is_training:
-    #        self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
-    #        self.summary_loss_train = tf.summary.scalar('train/loss', self.loss)
+    def _create_summary(self):
+        if self.FLAGS.is_training:
+            self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
+            self.summary_loss_recon_train = tf.summary.scalar('train/loss_recon',
+                self.recon_loss/(self.FLAGS.max_episode_length*self.FLAGS.batch_size))
+            self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
+            self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
 
-    #        self.merge_train_list = [self.summary_learning_rate, self.summary_loss_train]
-    #        self.merged_train = tf.summary.merge(self.merge_train_list)
+            self.merge_train_list = [self.summary_learning_rate, self.summary_loss_recon_train,
+                self.summary_loss_reinforce_train, self.summary_reward_batch_train]
+            self.merged_train = tf.summary.merge(self.merge_train_list)
