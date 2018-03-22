@@ -36,7 +36,7 @@ class ActiveMVnet(object):
         self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
             shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
         self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
-        self.reward_batch = tf.placeholder(dtype=tf.float32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1], name='reward_batch')
+        #self.reward_batch = tf.placeholder(dtype=tf.float32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1], name='reward_batch')
         ## inputs/outputs for aggregtor
 
         ## inputs/outputs for MVnet
@@ -255,11 +255,11 @@ class ActiveMVnet(object):
         with tf.device('/gpu:1'):
             ## --------------- train -------------------
             self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
-                if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
+                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
             self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7,
-                if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
+                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             ## --------------- train -------------------
             ## --------------- test  -------------------
@@ -284,7 +284,7 @@ class ActiveMVnet(object):
             self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm_use)
             self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
             self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
-                if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
             ## --------------- train -------------------
             ## --------------- test  -------------------
             self.RGB_list_test_norm_use, _ = tf.split(self.RGB_list_test_norm,
@@ -310,14 +310,14 @@ class ActiveMVnet(object):
         ## --------------- test  -------------------
         recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
             logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
-        self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, name='recon_loss_list_test')
+        self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, axis=[2,3,4], name='recon_loss_list_test')
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
         ## --------------- test  -------------------
 
-        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len):
+        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len, r_name=None):
             
             reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
-            reward_batch_list = tf.get_variable(name='reward_batch_list', shape=reward_raw_batch.get_shape(),
+            reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
 
             batch_size = loss_list_batch.get_shape().as_list()[0]
@@ -344,14 +344,15 @@ class ActiveMVnet(object):
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1)
-        #self.reward_test_list, self.reward_raw_test = process_loss_to_reward(self.recon_loss_list_test, self.FLAGS.gamma,
-        #    self.FLAGS.max_episode_length-1)
+        self.reward_test_list, self.reward_raw_test = process_loss_to_reward(self.recon_loss_list_test, self.FLAGS.gamma,
+            self.FLAGS.max_episode_length-1, r_name='test')
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
-        self.reward_batch = collapse_dims(self.reward_batch_list)
+        ## reward_batch node should not back propagate
+        self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
         self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):
