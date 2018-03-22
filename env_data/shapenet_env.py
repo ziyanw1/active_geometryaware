@@ -31,14 +31,16 @@ class ShapeNetEnv():
         self.max_episode_length = FLAGS.max_episode_length
 
         self.category = FLAGS.category
+        FLAGS.train_filename_prefix
+        
         self.lists_dir = 'data/render_scripts/lists/{}_lists/'.format(self.category) 
-        with open(self.lists_dir+'train_idx.txt', 'r') as f:
+        with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.train_filename_prefix), 'r') as f:
             self.train_list = f.read().splitlines()
         
-        with open(self.lists_dir+'val_idx.txt', 'r') as f:
+        with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.val_filename_prefix), 'r') as f:
             self.val_list = f.read().splitlines()
         
-        with open(self.lists_dir+'test_idx.txt', 'r') as f:
+        with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.test_filename_prefix), 'r') as f:
             self.test_list = f.read().splitlines()
         
         self.data_dir = 'data/data_cache/blender_renderings/{}/res{}_{}_all/'.format(self.category,
