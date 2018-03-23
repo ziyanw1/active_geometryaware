@@ -167,28 +167,6 @@ def restore_from_iter(ae, iter):
     ae.saver.restore(ae.sess, ckpt_path)
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
-def select_action(agent, rgb, invZ, mask, idx, is_training=True):
-    feed_dict = {
-        agent.is_training:False,
-        agent.RGB_list_test: rgb[None, ...],
-        agent.invZ_list_test: invZ[None, ...],
-        agent.mask_list_test: mask[None, ...],
-    }
-    
-    #if np.random.uniform(low=0.0, high=1.0) > epsilon:
-    #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
-    #else:
-    #    return np.random.randint(low=0, high=FLAGS.action_num)
-    stuff = agent.sess.run([agent.action_prob_test], feed_dict=feed_dict)
-    action_prob = stuff[0][idx]
-    if is_training:
-        a_response = np.random.choice(action_prob, p=action_prob)
-
-        a_idx = np.argmax(action_prob == a_response)
-    else:
-        a_idx = np.argmax(action_prob)
-    return a_idx
-
 def predict_vox_list(agent, rgb, invZ, mask, vox_gt, azimuth, elevation):
     
     feed_dict = {
@@ -277,7 +255,7 @@ def train(active_mv):
             mask_temp_list *= (invZ_temp_list >= 1e-6)
             
             tic = time.time()
-            agent_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx) 
+            agent_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
@@ -389,7 +367,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
             mask_temp_list *= (invZ_temp_list >= 1e-6)
             
-            active_mv_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
+            active_mv_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
                 is_training=False) 
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
@@ -469,7 +447,7 @@ def test(agent, test_episode_num, model_iter):
         vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = select_action(agent, RGB_temp_list[e_idx], vox_temp, is_training=False) 
+            agent_action = agent.select_action(RGB_temp_list[e_idx], vox_temp, is_training=False)
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)

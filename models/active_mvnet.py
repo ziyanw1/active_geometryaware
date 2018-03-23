@@ -394,3 +394,49 @@ class ActiveMVnet(object):
             self.merge_train_list = [self.summary_learning_rate, self.summary_loss_recon_train,
                 self.summary_loss_reinforce_train, self.summary_reward_batch_train]
             self.merged_train = tf.summary.merge(self.merge_train_list)
+
+    '''
+    def construct_feed_dict(self, mvnet_inputs, train_mode = True):
+        #if policy = true, then the actions must be fed in as well
+
+        if train_mode:
+            RGB_ph = None
+            invZ_ph = None
+            mask_ph = None
+            action_ph = None
+            vox_ph = None
+            azimuth_ph = None
+            elevation_ph = None
+        else:
+            pass
+        
+        feed_dict = {
+            self.is_training: mvnet_inputs.is_training,
+            self.RGB_list_test: mvnet_inputs.RGB
+            self.invZ_list_test: 
+
+        }
+    '''
+
+    def select_action(self, rgb, invZ, mask, idx, is_training = True):
+        feed_dict = {
+            self.is_training:False,
+            self.RGB_list_test: rgb[None, ...],
+            self.invZ_list_test: invZ[None, ...],
+            self.mask_list_test: mask[None, ...],
+        }
+    
+        #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+        #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
+        #else:
+        #    return np.random.randint(low=0, high=FLAGS.action_num)
+        stuff = self.sess.run([self.action_prob_test], feed_dict=feed_dict)
+        action_prob = stuff[0][idx]
+        if is_training:
+            a_response = np.random.choice(action_prob, p=action_prob)
+
+            a_idx = np.argmax(action_prob == a_response)
+        else:
+            a_idx = np.argmax(action_prob)
+        return a_idx
+        
