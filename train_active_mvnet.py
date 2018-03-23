@@ -102,6 +102,7 @@ flags.DEFINE_integer("init_i_to", 1, "init i to")
 flags.DEFINE_integer("test_iter", 2, "init i to")
 flags.DEFINE_integer("test_episode_num", 2, "init i to")
 flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
+flags.DEFINE_boolean("if_save_eval", False, "if save evaluation results")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
@@ -347,12 +348,12 @@ def train(active_mv):
             save(active_mv, i_idx, i_idx, i_idx) 
 
         if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem)
+            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx)
             tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
             tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
             tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 
-def evaluate(active_mv, test_episode_num, replay_mem):
+def evaluate(active_mv, test_episode_num, replay_mem, iter):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
@@ -418,6 +419,18 @@ def evaluate(active_mv, test_episode_num, replay_mem):
         rewards_list.append(np.sum(rewards_test))
         IoU_list.append(final_IoU)
         loss_list.append(recon_loss_list)
+
+        if FLAGS.if_save_eval:
+            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state}
+            eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
+            if not os.path.exists(eval_dir):
+                os.mkdir(eval_dir)
+            eval_dir = os.path.join(eval_dir, '{}'.format(iter))
+            if not os.path.exists(eval_dir):
+                os.mkdir(eval_dir)
+
+            mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
+            sio.savemat(mat_save_name, save_dict)
 
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
