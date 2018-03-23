@@ -198,20 +198,12 @@ def train(active_mv):
             azimuth_l_b = input_stuff[4]
             elevation_l_b = input_stuff[5]        
             action_l_b = input_stuff[6]
-            feed_dict = {
-                active_mv.is_training: True,
-                active_mv.RGB_list_batch:rgb_l_b,
-                active_mv.invZ_list_batch:invz_l_b, 
-                active_mv.mask_list_batch:mask_l_b,
-                active_mv.vox_batch:vox_b,
-                active_mv.action_list_batch:action_l_b,
-                active_mv.azimuth_list_batch:azimuth_l_b,
-                active_mv.elevation_list_batch:elevation_l_b,                
-            }
+
+            mvnet_input = MVInput(rgb_l_b, invz_l_b, mask_l_b, azimuth_l_b, elevation_l_b, vox = vox_b, action = action_l_b)
             tic = time.time()
-            out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.opt_recon, active_mv.recon_loss,
-                active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
-                active_mv.loss_reinforce], feed_dict=feed_dict)
+
+            out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
+            
             log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, out_stuff[2], time.time()-tic))
         #sys.exit()
         ###
@@ -285,21 +277,13 @@ def train(active_mv):
         azimuth_l_b = input_stuff[4]
         elevation_l_b = input_stuff[5]        
         action_l_b = input_stuff[6]
-        feed_dict = {
-            active_mv.is_training: True,
-            active_mv.RGB_list_batch:rgb_l_b,
-            active_mv.invZ_list_batch:invz_l_b, 
-            active_mv.mask_list_batch:mask_l_b,
-            active_mv.vox_batch:vox_b,
-            active_mv.action_list_batch:action_l_b,
-            active_mv.azimuth_list_batch:azimuth_l_b,
-            active_mv.elevation_list_batch:elevation_l_b,                
-        }
+
+        mvnet_input = MVInput(rgb_l_b, invz_l_b, mask_l_b, azimuth_l_b, elevation_l_b, vox = vox_b, action = action_l_b)
         
         tic = time.time()
-        out_stuff = active_mv.sess.run([active_mv.unproj_grid_batch, active_mv.recon_loss, active_mv.loss_reinforce,
-            active_mv.recon_loss_list, active_mv.action_prob, active_mv.reward_batch_list, active_mv.reward_raw_batch,
-            active_mv.opt_recon, active_mv.opt_reinforce, active_mv.merged_train], feed_dict=feed_dict)
+
+        out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
+        
         recon_loss = out_stuff[1]
         reinforce_loss = out_stuff[2]
         summary_train = out_stuff[-1]

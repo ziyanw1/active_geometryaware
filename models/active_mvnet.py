@@ -482,7 +482,45 @@ class ActiveMVnet(object):
             self.vox_pred_test, self.recon_loss_list_test,
             self.reward_raw_test], feed_dict=feed_dict)
         
-        return vox_test_list, recon_loss_list, rewards_test 
+        return vox_test_list, recon_loss_list, rewards_test
+
+    def run_step(self, mvnet_input, mode, is_training = True):
+        '''mode is one of 'burnin', 'train' '''
+        
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = True, include_action = True, train_mode = is_training
+        )
+
+        if mode == 'burnin':
+            ops_to_run = [
+                self.unproj_grid_batch,
+                self.opt_recon,
+                self.recon_loss,
+                self.recon_loss_list,
+                self.action_prob,
+                self.reward_batch_list,
+                self.reward_raw_batch,
+                self.loss_reinforce,
+            ]
+        elif mode == 'train':
+            ops_to_run = [
+                self.unproj_grid_batch,
+                self.recon_loss,
+                self.loss_reinforce,
+                self.recon_loss_list,
+                self.action_prob,
+                self.reward_batch_list,
+                self.reward_raw_batch,
+                self.opt_recon,
+                self.opt_reinforce,
+                self.merged_train
+            ]     
+        else:
+            assert 'bad mode'
+        
+        out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
+        return out_stuff
+        
 
 class MVInput(object):
     def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
