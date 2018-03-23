@@ -272,6 +272,10 @@ def train(active_mv):
         ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
         ## 2. update vox_feature_list using unproject and aggregator
         for e_idx in range(FLAGS.max_episode_length-1):
+            ## processing mask
+            mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
+            mask_temp_list *= (invZ_temp_list >= 1e-6)
+            
             tic = time.time()
             agent_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx) 
             actions.append(agent_action)
@@ -381,6 +385,10 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
 
         ## run simulations and get memories
         for e_idx in range(FLAGS.max_episode_length-1):
+            ## processing mask
+            mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
+            mask_temp_list *= (invZ_temp_list >= 1e-6)
+            
             active_mv_action = select_action(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
                 is_training=False) 
             actions.append(active_mv_action)
