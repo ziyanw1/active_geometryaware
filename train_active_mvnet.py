@@ -407,7 +407,8 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         loss_list.append(recon_loss_list)
 
         if FLAGS.if_save_eval:
-            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state}
+            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
+                'RGB_list': RGB_temp_list}
             eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
