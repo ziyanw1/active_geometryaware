@@ -29,7 +29,7 @@ sys.path.append(os.path.join(BASE_DIR, 'env_data'))
 import tf_util
 
 #from visualizers import VisVox
-from active_mvnet import ActiveMVnet
+from active_mvnet import ActiveMVnet, MVInput
 from shapenet_env import ShapeNetEnv
 from replay_memory import ReplayMemory, trajectData
 import psutil
@@ -243,7 +243,8 @@ def train(active_mv):
             mask_temp_list *= (invZ_temp_list >= 1e-6)
             
             tic = time.time()
-            agent_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, e_idx) 
+            mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list)
+            agent_action = active_mv.select_action(mvnet_input, e_idx) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
@@ -358,9 +359,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             ## processing mask
             mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
             mask_temp_list *= (invZ_temp_list >= 1e-6)
-            
-            active_mv_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, e_idx,
-                is_training=False) 
+
+            mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list)
+            active_mv_action = active_mv.select_action(mvnet_input, e_idx, is_training=False) 
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             
@@ -386,7 +387,10 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
 
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
-        vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt, azimuth_temp_list, elevation_temp_list)
+
+        mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, vox = vox_gt)
+        vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(mvnet_input)
+        
         vox_final_ = vox_final_list[-1, ...]
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0

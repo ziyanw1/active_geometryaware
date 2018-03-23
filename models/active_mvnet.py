@@ -439,17 +439,20 @@ class ActiveMVnet(object):
             keys.append('action')
             
         for key in keys:
-            feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
 
-    def select_action(self, rgb, invZ, mask, azimuth, elevation, idx, is_training = False):
-        feed_dict = {
-            self.is_training:False,
-            self.RGB_list_test: rgb[None, ...],
-            self.invZ_list_test: invZ[None, ...],
-            self.mask_list_test: mask[None, ...],
-            self.azimuth_list_test: azimuth[None, ...],
-            self.elevation_list_test: elevation[None, ...],            
-        }
+            ph_input = getattr(mvnet_inputs, key)
+            if not train_mode:
+                ph_input = ph_input[None, ...]
+
+            feed_dict[getattr(placeholders, key)] = ph_input
+
+        return feed_dict
+
+    def select_action(self, mvnet_input, idx, is_training = False):
+        
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = False, include_action = False, train_mode = is_training
+        )
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
         #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
@@ -465,18 +468,12 @@ class ActiveMVnet(object):
             a_idx = np.argmax(action_prob)
         return a_idx
 
-    def predict_vox_list(self, rgb, invZ, mask, vox_gt, azimuth, elevation, is_training = False):
-    
-        feed_dict = {
-            self.is_training:False,
-            self.RGB_list_test: rgb[None, ...],
-            self.invZ_list_test: invZ[None, ...],
-            self.mask_list_test: mask[None, ...],
-            self.vox_test: vox_gt[None, ...],
-            self.azimuth_list_test: azimuth[None, ...],
-            self.elevation_list_test: elevation[None, ...],        
-        }
-    
+    def predict_vox_list(self, mvnet_input, is_training = False):
+
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = True, include_action = False, train_mode = is_training
+        )
+        
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
         #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
         #else:
