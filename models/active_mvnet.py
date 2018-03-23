@@ -479,8 +479,8 @@ class ActiveMVnet(object):
         #else:
         #    return np.random.randint(low=0, high=FLAGS.action_num)
         vox_test_list, recon_loss_list, rewards_test = self.sess.run([
-            self.vox_pred_test, active_mv.recon_loss_list_test,
-            active_mv.reward_raw_test], feed_dict=feed_dict)
+            self.vox_pred_test, self.recon_loss_list_test,
+            self.reward_raw_test], feed_dict=feed_dict)
         
         return vox_test_list, recon_loss_list, rewards_test 
 
