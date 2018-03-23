@@ -86,6 +86,7 @@ flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
 flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator")
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
+flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -417,10 +418,10 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
         vox_final_list, recon_loss_list, rewards_test = predict_vox_list(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt, azimuth_temp_list, elevation_temp_list)
-        vox_final_ = vox_final_list[-1, ...]
+        vox_final_ = np.squeeze(vox_final_list[-1, ...])
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
-        final_IoU = replay_mem.calu_IoU(vox_final_, vox_gt)
+        final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
         #final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
         log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
             i_idx, np.sum(rewards_test), final_IoU, recon_loss_list))

@@ -316,13 +316,25 @@ class ActiveMVnet(object):
         ## --------------- train -------------------
 
         ground_truth_voxels = self.vox_list_batch #rotate this
-        
-        recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=ground_truth_voxels, 
-            logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
+       
+        if not self.FLAGS.use_coef:
+            recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=ground_truth_voxels, 
+                logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
+        else:
+            ## add coefficient to postive samples
+            recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(targets=ground_truth_voxels, 
+                logits=tf.squeeze(self.vox_list_logits, axis=-1), pos_weight=1e4, name='recon_loss_mat')
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
         ## --------------- train -------------------
         ## --------------- test  -------------------
+        if not self.FLAGS.use_coef:
+            recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
+                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
+        else:
+            ## add coefficient to postive samples
+            recon_loss_mat_test = tf.nn.weighted_cross_entropy_with_logits(targets=self.vox_list_test,
+                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), pos_weight=1e4, name='recon_loss_mat_test')
         recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
             logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
         self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, axis=[2,3,4], name='recon_loss_list_test')
@@ -379,9 +391,11 @@ class ActiveMVnet(object):
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
-        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var, global_step=self.counter)  
-        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
-            global_step=self.counter)
+        #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var, global_step=self.counter)  
+        #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
+        #    global_step=self.counter)
+        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var)  
+        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
