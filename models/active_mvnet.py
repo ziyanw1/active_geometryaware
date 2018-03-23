@@ -441,12 +441,14 @@ class ActiveMVnet(object):
         for key in keys:
             feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
 
-    def select_action(self, rgb, invZ, mask, idx, is_training = True):
+    def select_action(self, rgb, invZ, mask, azimuth, elevation, idx, is_training = False):
         feed_dict = {
             self.is_training:False,
             self.RGB_list_test: rgb[None, ...],
             self.invZ_list_test: invZ[None, ...],
             self.mask_list_test: mask[None, ...],
+            self.azimuth_list_test: azimuth[None, ...],
+            self.elevation_list_test: elevation[None, ...],            
         }
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
@@ -462,7 +464,29 @@ class ActiveMVnet(object):
         else:
             a_idx = np.argmax(action_prob)
         return a_idx
+
+    def predict_vox_list(self, rgb, invZ, mask, vox_gt, azimuth, elevation, is_training = False):
+    
+        feed_dict = {
+            self.is_training:False,
+            self.RGB_list_test: rgb[None, ...],
+            self.invZ_list_test: invZ[None, ...],
+            self.mask_list_test: mask[None, ...],
+            self.vox_test: vox_gt[None, ...],
+            self.azimuth_list_test: azimuth[None, ...],
+            self.elevation_list_test: elevation[None, ...],        
+        }
+    
+        #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+        #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
+        #else:
+        #    return np.random.randint(low=0, high=FLAGS.action_num)
+        vox_test_list, recon_loss_list, rewards_test = self.sess.run([
+            self.vox_pred_test, active_mv.recon_loss_list_test,
+            active_mv.reward_raw_test], feed_dict=feed_dict)
         
+        return vox_test_list, recon_loss_list, rewards_test 
+
 class MVInput(object):
     def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
         self.rgb = rgb
@@ -472,3 +496,4 @@ class MVInput(object):
         self.elevation = elevation
         self.vox = vox
         self.action = action
+

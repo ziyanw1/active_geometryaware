@@ -167,26 +167,6 @@ def restore_from_iter(ae, iter):
     ae.saver.restore(ae.sess, ckpt_path)
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
-def predict_vox_list(agent, rgb, invZ, mask, vox_gt, azimuth, elevation):
-    
-    feed_dict = {
-        agent.is_training:False,
-        agent.RGB_list_test: rgb[None, ...],
-        agent.invZ_list_test: invZ[None, ...],
-        agent.mask_list_test: mask[None, ...],
-        agent.vox_test: vox_gt[None, ...],
-        agent.azimuth_list_test: azimuth[None, ...],
-        agent.elevation_list_test: elevation[None, ...],        
-    }
-    
-    #if np.random.uniform(low=0.0, high=1.0) > epsilon:
-    #    action_prob = agent.sess.run([agent.action_prob], feed_dict=feed_dict)
-    #else:
-    #    return np.random.randint(low=0, high=FLAGS.action_num)
-    vox_test_list, recon_loss_list, rewards_test = agent.sess.run([agent.vox_pred_test, active_mv.recon_loss_list_test,
-        active_mv.reward_raw_test], feed_dict=feed_dict)
-    return vox_test_list, recon_loss_list, rewards_test 
-
 def train(active_mv):
     
     senv = ShapeNetEnv(FLAGS)
@@ -243,8 +223,16 @@ def train(active_mv):
         invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
         mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
 
+        azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
+        elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
+
+        
         RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id) 
+        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+
+        azimuth_temp_list[0, 0] = state[0][0]
+        elevation_temp_list[0, 0] = state[1][0]
+        
         #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         ## TODO: 
         ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
@@ -255,11 +243,15 @@ def train(active_mv):
             mask_temp_list *= (invZ_temp_list >= 1e-6)
             
             tic = time.time()
-            agent_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx) 
+            agent_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, e_idx) 
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id) 
+            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
+
+            azimuth_temp_list[e_idx+1, 0] = next_state[0]
+            elevation_temp_list[e_idx+1, 0] = next_state[1]
+            
             log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
                 next_state[1], model_id, time.time()-tic))
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
@@ -367,7 +359,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
             mask_temp_list *= (invZ_temp_list >= 1e-6)
             
-            active_mv_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, e_idx,
+            active_mv_action = active_mv.select_action(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, e_idx,
                 is_training=False) 
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
@@ -394,7 +386,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
 
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
-        vox_final_list, recon_loss_list, rewards_test = predict_vox_list(active_mv, RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt, azimuth_temp_list, elevation_temp_list)
+        vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(RGB_temp_list, invZ_temp_list, mask_temp_list, vox_gt, azimuth_temp_list, elevation_temp_list)
         vox_final_ = vox_final_list[-1, ...]
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
@@ -425,65 +417,65 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
 
     return np.mean(rewards_list), np.mean(IoU_list), np.mean(loss_list)
 
-def test(agent, test_episode_num, model_iter):
-    senv = ShapeNetEnv(FLAGS)
-    replay_mem = ReplayMemory(FLAGS)
+# def test(agent, test_episode_num, model_iter):
+#     senv = ShapeNetEnv(FLAGS)
+#     replay_mem = ReplayMemory(FLAGS)
 
-    K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
-    K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
-    for i_idx in range(test_episode_num):
-        state, model_id = senv.reset(True)
-        senv.current_model = '53180e91cd6651ab76e29c9c43bc7aa'
-        senv.current_model = '41d9bd662687cf503ca22f17e86bab24'
-        model_id = senv.current_model
-        actions = []
-        RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
-        R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
-        vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-            dtype=np.float32)
+#     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
+#     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
+#     for i_idx in range(test_episode_num):
+#         state, model_id = senv.reset(True)
+#         senv.current_model = '53180e91cd6651ab76e29c9c43bc7aa'
+#         senv.current_model = '41d9bd662687cf503ca22f17e86bab24'
+#         model_id = senv.current_model
+#         actions = []
+#         RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+#         R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+#         vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+#             dtype=np.float32)
 
-        RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
-        vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
-        vox_temp = np.squeeze(vox_temp_list[0, ...])
-        ## run simulations and get memories
-        for e_idx in range(FLAGS.max_episode_length-1):
-            agent_action = agent.select_action(RGB_temp_list[e_idx], vox_temp, is_training=False)
-            actions.append(agent_action)
-            state, next_state, done, model_id = senv.step(actions[-1])
-            RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
-            ## TODO: update vox_temp
-            vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
-            if done:
-                traj_state = state
-                traj_state[0] += [next_state[0]]
-                traj_state[1] += [next_state[1]]
-                rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
-                temp_traj = trajectData(traj_state, actions, model_id)
-                break
+#         RGB_temp_list[0, ...], _ = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+#         R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+#         vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
+#         vox_temp = np.squeeze(vox_temp_list[0, ...])
+#         ## run simulations and get memories
+#         for e_idx in range(FLAGS.max_episode_length-1):
+#             agent_action = agent.select_action(RGB_temp_list[e_idx], vox_temp, is_training=False)
+#             actions.append(agent_action)
+#             state, next_state, done, model_id = senv.step(actions[-1])
+#             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+#             R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+#             ## TODO: update vox_temp
+#             vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
+#             vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
+#             if done:
+#                 traj_state = state
+#                 traj_state[0] += [next_state[0]]
+#                 traj_state[1] += [next_state[1]]
+#                 rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
+#                 temp_traj = trajectData(traj_state, actions, model_id)
+#                 break
 
 
-        vox_final_list = vox_temp_list
+#         vox_final_list = vox_temp_list
 
-        result_path = os.path.join(FLAGS.LOG_DIR, 'results')
-        if not os.path.exists(result_path):
-            os.mkdir(result_path)
+#         result_path = os.path.join(FLAGS.LOG_DIR, 'results')
+#         if not os.path.exists(result_path):
+#             os.mkdir(result_path)
 
-        if FLAGS.save_test_results:
-            result_path_iter = os.path.join(result_path, '{}'.format(model_iter))
-            if not os.path.exists(result_path_iter):
-                os.mkdir(result_path_iter)
+#         if FLAGS.save_test_results:
+#             result_path_iter = os.path.join(result_path, '{}'.format(model_iter))
+#             if not os.path.exists(result_path_iter):
+#                 os.mkdir(result_path_iter)
         
-        voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
-        vox_gt = replay_mem.read_vox(voxel_name)
+#         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
+#         vox_gt = replay_mem.read_vox(voxel_name)
 
-        mat_path = os.path.join(result_path_iter, '{}.mat'.format(i_idx))
-        sio.savemat(mat_path, {'vox_list':vox_final_list, 'vox_gt': vox_gt, 'RGB': RGB_temp_list, 'model_id': model_id, 'states': traj_state})
+#         mat_path = os.path.join(result_path_iter, '{}.mat'.format(i_idx))
+#         sio.savemat(mat_path, {'vox_list':vox_final_list, 'vox_gt': vox_gt, 'RGB': RGB_temp_list, 'model_id': model_id, 'states': traj_state})
 
 
-        #log_string('+++++Iteration: {}, loss: {}, mean_reward: {}+++++'.format(i_idx, loss, np.mean(rewards)))
+#         #log_string('+++++Iteration: {}, loss: {}, mean_reward: {}+++++'.format(i_idx, loss, np.mean(rewards)))
 
 def burn_in(senv, replay_mem):     
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
