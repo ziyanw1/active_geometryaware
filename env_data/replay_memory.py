@@ -11,6 +11,7 @@ from lsm.mvnet import MVNet
 from lsm.utils import Bunch, get_session_config
 from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
+from models.active_mvnet import MVInputs, MVInput
 
 sys.path.append(os.path.join('utils'))
 from util import downsample
@@ -248,117 +249,134 @@ class ReplayMemory():
         cross_entropy = np.log(a)
         return np.sum(cross_entropy[:])
 
-    def get_batch(self, batch_size=32):
+    # def get_batch(self, batch_size=32):
         
-        RGB_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
-        invZ_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, ), dtype=np.float32)
-        mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution,), dtype=np.float32)
-        sn_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
-        vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
-            dtype=np.float32)
-        #vox_current_batch = np.ones((self.max_episode_length, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
-        #    dtype=np.float32)
-        azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
-        elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
-        actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
-        R_batch = np.zeros((batch_size, self.max_episode_length, 3, 4), dtype=np.float32)
-        K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
-        K_batch = np.tile(K_single[None, None, ...], (batch_size, self.max_episode_length, 1, 1))  
-        #K_batch = np.zeros((self.max_episode_length, batch_size, 3, 3), dtype=np.float32)
-        #state_mask_current = np.ones_like(RGB_list_batch, dtype=np.float32)
-        #state_mask_next = np.ones_like(RGB_list_batch, dtype=np.float32)
-        current_idx_list = np.zeros((batch_size,), dtype=np.uint8)
-        reward_list_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
+    #     RGB_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
+    #     invZ_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, ), dtype=np.float32)
+    #     mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution,), dtype=np.float32)
+    #     sn_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
+    #     vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
+    #         dtype=np.float32)
+    #     #vox_current_batch = np.ones((self.max_episode_length, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
+    #     #    dtype=np.float32)
+    #     azim_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
+    #     elev_batch = np.zeros((batch_size, self.max_episode_length,), dtype=np.float32)
+    #     actions_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
+    #     R_batch = np.zeros((batch_size, self.max_episode_length, 3, 4), dtype=np.float32)
+    #     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
+    #     K_batch = np.tile(K_single[None, None, ...], (batch_size, self.max_episode_length, 1, 1))  
+    #     #K_batch = np.zeros((self.max_episode_length, batch_size, 3, 3), dtype=np.float32)
+    #     #state_mask_current = np.ones_like(RGB_list_batch, dtype=np.float32)
+    #     #state_mask_next = np.ones_like(RGB_list_batch, dtype=np.float32)
+    #     current_idx_list = np.zeros((batch_size,), dtype=np.uint8)
+    #     reward_list_batch = np.zeros((batch_size, self.max_episode_length-1,), dtype=np.float32)
 
-        for b_idx in range(batch_size):
-            higher_bound = min(self.count, self.mem_length)
-            rand_idx = np.random.randint(0, higher_bound)
-            data_ = self.mem_list[rand_idx]
-            #print data_.states[0]
+    #     for b_idx in range(batch_size):
+    #         higher_bound = min(self.count, self.mem_length)
+    #         rand_idx = np.random.randint(0, higher_bound)
+    #         data_ = self.mem_list[rand_idx]
+    #         #print data_.states[0]
 
-            azim_batch[b_idx, ...] = np.asarray(data_.states[0])
-            elev_batch[b_idx, ...] = np.asarray(data_.states[1])
-            actions_batch[b_idx, ...] = np.asarray(data_.actions)
-            reward_list_batch[b_idx, ...] = np.asarray(data_.rewards)
-            model_id = data_.model_id
-            current_idx = np.random.randint(0, self.max_episode_length-1)
-            current_idx_list[b_idx] = current_idx
-            #state_mask_current[b_idx, 0:current_idx, ...] = 0.0
-            #state_mask_next[b_idx, 0:current_idx+1, ...] = 0.0
-            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
-            vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
+    #         azim_batch[b_idx, ...] = np.asarray(data_.states[0])
+    #         elev_batch[b_idx, ...] = np.asarray(data_.states[1])
+    #         actions_batch[b_idx, ...] = np.asarray(data_.actions)
+    #         reward_list_batch[b_idx, ...] = np.asarray(data_.rewards)
+    #         model_id = data_.model_id
+    #         current_idx = np.random.randint(0, self.max_episode_length-1)
+    #         current_idx_list[b_idx] = current_idx
+    #         #state_mask_current[b_idx, 0:current_idx, ...] = 0.0
+    #         #state_mask_next[b_idx, 0:current_idx+1, ...] = 0.0
+    #         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+    #         vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
 
-            for l_idx in range(self.max_episode_length):
-                RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, ...] = self.read_png_to_uint8(
-                    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
+    #         for l_idx in range(self.max_episode_length):
+    #             RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, ...] = self.read_png_to_uint8(
+    #                 azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
 
-                invZ_batch[b_idx, l_idx, ...] = self.read_invZ(azim_batch[b_idx, l_idx],
-                    elev_batch[b_idx, l_idx], model_id)
+    #             invZ_batch[b_idx, l_idx, ...] = self.read_invZ(azim_batch[b_idx, l_idx],
+    #                 elev_batch[b_idx, l_idx], model_id)
 
-                R_batch[b_idx, l_idx, ...] = self.get_R(azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx])
+    #             R_batch[b_idx, l_idx, ...] = self.get_R(azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx])
 
-                ## TODO: update sn_batch and vox_gt_batch
+    #             ## TODO: update sn_batch and vox_gt_batch
 
-        #print 'K_batch: {}'.format(K_batch.shape)
-        #feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch*state_mask_current}
-        #pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
-        #vox_current_batch = pred_voxels
+    #     #print 'K_batch: {}'.format(K_batch.shape)
+    #     #feed_dict = {self.net.K: K_batch, self.net.Rcam: R_batch, self.net.ims: RGB_list_batch*state_mask_current}
+    #     #pred_voxels = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+    #     #vox_current_batch = pred_voxels
         
-        pred_voxels = [] 
-        for K_single, R_single, RGB_single in zip(K_batch, R_batch, RGB_list_batch):
-            feed_dict = {self.net.K: K_single[None, ...], self.net.Rcam: R_single[None, ...], self.net.ims:
-                RGB_single[None, ...]}
-            pred_voxels_temp = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
-            pred_voxels.append(pred_voxels_temp)
-        pred_voxels = np.squeeze(np.asarray(pred_voxels))
-        #vox_curr_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list, ...], axis=-1)
-        vox_curr_batch = pred_voxels[range(batch_size), current_idx_list, ...]
-        vox_next_batch = pred_voxels[range(batch_size), current_idx_list+1, ...]
+    #     pred_voxels = [] 
+    #     for K_single, R_single, RGB_single in zip(K_batch, R_batch, RGB_list_batch):
+    #         feed_dict = {self.net.K: K_single[None, ...], self.net.Rcam: R_single[None, ...], self.net.ims:
+    #             RGB_single[None, ...]}
+    #         pred_voxels_temp = self.sess.run(self.net.prob_vox, feed_dict=feed_dict)
+    #         pred_voxels.append(pred_voxels_temp)
+    #     pred_voxels = np.squeeze(np.asarray(pred_voxels))
+    #     #vox_curr_batch = np.squeeze(pred_voxels[range(batch_size), current_idx_list, ...], axis=-1)
+    #     vox_curr_batch = pred_voxels[range(batch_size), current_idx_list, ...]
+    #     vox_next_batch = pred_voxels[range(batch_size), current_idx_list+1, ...]
 
-        RGB_batch = np.asarray([RGB_list_batch[bi, li, ...] for bi, li in zip(range(batch_size), current_idx_list)],
-            dtype=np.float32)
+    #     RGB_batch = np.asarray([RGB_list_batch[bi, li, ...] for bi, li in zip(range(batch_size), current_idx_list)],
+    #         dtype=np.float32)
 
-        ## instance reward
-        #reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
-        ## cumulated reward
-        reward_batch = self.get_decay_reward(reward_list_batch, current_idx_list)
-        action_response_batch = actions_batch[range(batch_size), current_idx_list]
+    #     ## instance reward
+    #     #reward_batch = self.calu_reward(vox_curr_batch, vox_next_batch, vox_gt_batch)
+    #     ## cumulated reward
+    #     reward_batch = self.get_decay_reward(reward_list_batch, current_idx_list)
+    #     action_response_batch = actions_batch[range(batch_size), current_idx_list]
 
-        #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
-        return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
+    #     #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
+    #     return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
     
     def get_batch_list(self, batch_size=4):
-        
-        RGB_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 3), dtype=np.float32)
-        invZ_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 1), dtype=np.float32)
-        mask_list_batch = np.zeros((batch_size, self.max_episode_length, self.resolution, self.resolution, 1), dtype=np.float32)
-        vox_gt_batch = np.ones((batch_size, self.voxel_resolution, self.voxel_resolution, self.voxel_resolution),
-            dtype=np.float32)
-        azim_batch = np.zeros((batch_size, self.max_episode_length, 1), dtype=np.float32)
-        elev_batch = np.zeros((batch_size, self.max_episode_length, 1), dtype=np.float32)
-        actions_batch = np.zeros((batch_size, self.max_episode_length-1, 1), dtype=np.float32)
+        #returns MVInput
+
+        mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
 
         for b_idx in range(batch_size):
-            higher_bound = min(self.count, self.mem_length)
-            rand_idx = np.random.randint(0, higher_bound)
+            upper_bound = min(self.count, self.mem_length)
+            rand_idx = np.random.randint(0, upper_bound)
             data_ = self.mem_list[rand_idx]
 
-            azim_batch[b_idx, ..., 0] = np.asarray(data_.states[0])
-            elev_batch[b_idx, ..., 0] = np.asarray(data_.states[1])
-            actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
+            azimuths = np.asarray(data_.states[0])
+            elevations = np.asarray(data_.states[1])
+            actions = np.asarray(np.expand_dims(data_.actions, axis=1))
+
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
-            vox_gt_batch[b_idx, ...] = self.read_vox(voxel_name)
+            voxel = self.read_vox(voxel_name)
+
+            mvinputs.put_voxel(voxel, batch_idx = b_idx)
+            
+            #azim_batch[b_idx, ..., 0] = np.asarray(data_.states[0])
+            #elev_batch[b_idx, ..., 0] = np.asarray(data_.states[1])
+            #actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
 
             for l_idx in range(self.max_episode_length):
-                RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, :, :, 0] = self.read_png_to_uint8(
-                    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
-                invZ_list_batch[b_idx, l_idx, :, :, 0] = self.read_invZ(azim_batch[b_idx, l_idx],
-                    elev_batch[b_idx, l_idx], model_id)
-        mask_list_batch = (mask_list_batch > 0.5).astype(np.float32)
-        mask_list_batch *= (invZ_list_batch >= 1e-6)
+                #RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, :, :, 0] = self.read_png_to_uint8(
+                #    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
+                #invZ_list_batch[b_idx, l_idx, :, :, 0] = self.read_invZ(azim_batch[b_idx, l_idx],
+                #    elev_batch[b_idx, l_idx], model_id)
 
-        return RGB_list_batch, invZ_list_batch, mask_list_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
+                azimuth = azimuths[l_idx]
+                elevation = elevations[l_idx]
+                action = actions[l_idx] if (l_idx < self.max_episode_length-1) else None
+
+                rgb, mask = self.read_png_to_uint8(azimuth, elevation, model_id)
+                invz = self.read_invZ(azimuth, elevation, model_id)
+                mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+                #expand last axis for some inputs
+                invz = invz[..., None]
+                mask = mask[..., None]
+                azimuth = azimuth[..., None]
+                elevation = elevation[..., None]
+                
+                single_input = MVInput(rgb, invz, mask, azimuth, elevation, action)
+
+                mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
+
+        return mvinputs
 
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma

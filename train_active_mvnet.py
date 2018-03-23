@@ -190,16 +190,8 @@ def train(active_mv):
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
         for i in range(FLAGS.burn_in_iter):
-            input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
-            rgb_l_b = input_stuff[0]
-            invz_l_b = input_stuff[1]
-            mask_l_b = input_stuff[2]
-            vox_b = input_stuff[3]
-            azimuth_l_b = input_stuff[4]
-            elevation_l_b = input_stuff[5]        
-            action_l_b = input_stuff[6]
+            mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
 
-            mvnet_input = MVInput(rgb_l_b, invz_l_b, mask_l_b, azimuth_l_b, elevation_l_b, vox = vox_b, action = action_l_b)
             tic = time.time()
 
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
@@ -269,16 +261,7 @@ def train(active_mv):
         ## TODO: train
         ## 1. using given sequence data and ground truth voxel, train MVnet
         ## 2. for #max_episode_length times, train aggregator and agent policy network
-        input_stuff = replay_mem.get_batch_list(FLAGS.batch_size)
-        rgb_l_b = input_stuff[0]
-        invz_l_b = input_stuff[1]
-        mask_l_b = input_stuff[2]
-        vox_b = input_stuff[3]
-        azimuth_l_b = input_stuff[4]
-        elevation_l_b = input_stuff[5]        
-        action_l_b = input_stuff[6]
-
-        mvnet_input = MVInput(rgb_l_b, invz_l_b, mask_l_b, azimuth_l_b, elevation_l_b, vox = vox_b, action = action_l_b)
+        mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
         
         tic = time.time()
 

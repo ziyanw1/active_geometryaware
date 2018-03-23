@@ -6,7 +6,6 @@ import tensorflow.contrib.slim as slim
 from utils import util
 from utils import tf_util
 
-from env_data.replay_memory import ReplayMemory
 from env_data.shapenet_env import ShapeNetEnv, trajectData  
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 from util_unproj import unproject_tools 
@@ -520,7 +519,6 @@ class ActiveMVnet(object):
         
         out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
         return out_stuff
-        
 
 class MVInput(object):
     def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
@@ -532,3 +530,38 @@ class MVInput(object):
         self.vox = vox
         self.action = action
 
+class MVInputs(object):
+    def __init__(self, FLAGS, batch_size = None):
+
+        self.FLAGS = FLAGS
+        self.BS = FLAGS.batch_size if batch_size else batch_size
+
+        self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
+        self.make_zeros_for_shape = lambda x: np.zeros(self.make_shape(x), dtype = np.float32)
+
+        self.rgb = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 3))
+        self.invz = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
+        self.mask = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
+
+        voxel_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
+        self.vox = np.zeros(voxel_shape, np.float32)
+        
+        self.azimuth = self.make_zeros_for_shape((1,))
+        self.elevation = self.make_zeros_for_shape((1,))
+        self.action = self.make_zeros_for_shape((1,))[:,:-1] #trim out the last episode step
+
+    def put_voxel(self, voxel, batch_idx = 0):
+        assert 0 <= batch_idx < self.BS
+        self.vox[batch_idx, ...] = voxel
+        
+    def put(self, single_mvinput, episode_idx, batch_idx = 0):
+        assert 0 <= batch_idx < self.BS
+        assert 0 <= episode_idx < self.FLAGS.max_episode_length
+
+        keys = ['rgb', 'invz', 'mask', 'azimuth', 'elevation']
+        if hasattr(single_mvinput, 'action') and getattr(single_mvinput, 'action') is not None:
+            keys.append('action')
+            
+        for key in keys:
+            arr = getattr(self, key)
+            arr[batch_idx, episode_idx, ...] = getattr(single_mvinput, key)
