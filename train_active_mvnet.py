@@ -277,7 +277,7 @@ def train(active_mv):
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id) 
+            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id) 
             log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
                 next_state[1], model_id, time.time()-tic))
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
@@ -388,10 +388,10 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             
             RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
 
-            invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
+            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
 
-            azimuth_temp_list[e_idx, 0] = next_state[0]
-            elevation_temp_list[e_idx, 0] = next_state[1]
+            azimuth_temp_list[e_idx+1, 0] = next_state[0]
+            elevation_temp_list[e_idx+1, 0] = next_state[1]
             
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
