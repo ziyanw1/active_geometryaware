@@ -395,28 +395,51 @@ class ActiveMVnet(object):
                 self.summary_loss_reinforce_train, self.summary_reward_batch_train]
             self.merged_train = tf.summary.merge(self.merge_train_list)
 
-    '''
-    def construct_feed_dict(self, mvnet_inputs, train_mode = True):
-        #if policy = true, then the actions must be fed in as well
-
-        if train_mode:
-            RGB_ph = None
-            invZ_ph = None
-            mask_ph = None
-            action_ph = None
-            vox_ph = None
-            azimuth_ph = None
-            elevation_ph = None
-        else:
-            pass
+    def get_placeholders(self, include_vox, include_action, train_mode):
         
-        feed_dict = {
-            self.is_training: mvnet_inputs.is_training,
-            self.RGB_list_test: mvnet_inputs.RGB
-            self.invZ_list_test: 
+        placeholders = lambda: None
+        if train_mode:
+            placeholders.rgb = self.RGB_list_batch
+            placeholders.invz = self.invZ_list_batch
+            placeholders.mask = self.mask_list_batch
+            placeholders.azimuth = self.azimuth_list_batch
+            placeholders.elevation = self.elevation_list_batch
 
-        }
-    '''
+            if include_action:
+                placeholders.action = self.action_list_batch
+            if include_vox:
+                placeholders.vox = self.vox_batch
+
+        else:
+            placeholders.rgb = self.RGB_list_test
+            placeholders.invz = self.invZ_list_test
+            placeholders.mask = self.mask_list_test
+            placeholders.azimuth = self.azimuth_list_test
+            placeholders.elevation = self.elevation_list_test
+
+            if include_action:
+                placeholders.action = self.action_list_test
+            if include_vox:
+                placeholders.vox = self.vox_test
+
+        return placeholders
+
+    def construct_feed_dict(self, mvnet_inputs, include_vox, include_action, train_mode = True):
+
+        placeholders = self.get_placeholders(include_vox, include_action, train_mode = train_mode)
+
+        feed_dict = {self.is_training: train_mode}
+
+        keys = ['rgb', 'invz', 'mask', 'azimuth', 'elevation']
+        if include_vox:
+            assert mvnet_inputs.vox is not None
+            keys.append('vox')
+        if include_action:
+            assert mvnet_inputs.action is not None
+            keys.append('action')
+            
+        for key in keys:
+            feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
 
     def select_action(self, rgb, invZ, mask, idx, is_training = True):
         feed_dict = {
@@ -440,3 +463,12 @@ class ActiveMVnet(object):
             a_idx = np.argmax(action_prob)
         return a_idx
         
+class MVInput(object):
+    def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
+        self.rgb = rgb
+        self.invz = invz
+        self.mask = mask
+        self.azimuth = azimuth
+        self.elevation = elevation
+        self.vox = vox
+        self.action = action
