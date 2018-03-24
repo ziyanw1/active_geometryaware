@@ -29,7 +29,7 @@ sys.path.append(os.path.join(BASE_DIR, 'env_data'))
 import tf_util
 
 #from visualizers import VisVox
-from active_mvnet import ActiveMVnet, MVInput
+from active_mvnet import ActiveMVnet, MVInput, MVInputs
 from shapenet_env import ShapeNetEnv
 from replay_memory import ReplayMemory, trajectData
 import psutil
@@ -203,43 +203,63 @@ def train(active_mv):
     for i_idx in range(FLAGS.max_iter):
         state, model_id = senv.reset(True)
         actions = []
-        RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
-        invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
 
-        azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
-        elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
-
+        mvnet_input = MVInputs(FLAGS, batch_size = 1)
         
-        RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+        azimuth = state[0][0][None, ...]
+        elevation = state[1][0][None, ...]
 
-        azimuth_temp_list[0, 0] = state[0][0]
-        elevation_temp_list[0, 0] = state[1][0]
+        rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
+        invz = replay_mem.read_invZ(azimuth, elevation, model_id)
+        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+        #expand last axis for some inputs
+        invz = invz[..., None]
+        mask = mask[..., None]
+        azimuth = azimuth[..., None]
+        elevation = elevation[..., None]
+        
+        single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+
+        mvnet_input.put(single_input, episode_idx = 0)
         
         #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         ## TODO: 
         ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
         ## 2. update vox_feature_list using unproject and aggregator
-        for e_idx in range(FLAGS.max_episode_length-1):
+        for e_idx in range(1, FLAGS.max_episode_length):
             ## processing mask
-            mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
-            mask_temp_list *= (invZ_temp_list >= 1e-6)
             
             tic = time.time()
-            mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list)
-            agent_action = active_mv.select_action(mvnet_input, e_idx) 
+            agent_action = active_mv.select_action(mvnet_input, e_idx-1)
             actions.append(agent_action)
             state, next_state, done, model_id = senv.step(actions[-1])
-            RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
+            
+            azimuth = next_state[0]
+            elevation = next_state[1]
 
-            azimuth_temp_list[e_idx+1, 0] = next_state[0]
-            elevation_temp_list[e_idx+1, 0] = next_state[1]
+            rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
+            invz = replay_mem.read_invZ(azimuth, elevation, model_id)
+            mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+            #expand last axis for some inputs
+            invz = invz[..., None]
+            mask = mask[..., None]
+            azimuth = azimuth[..., None]
+            elevation = elevation[..., None]
+
+            single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+            mvnet_input.put(single_input, episode_idx = e_idx)
+            
+            #RGB_temp_list[e_idx, ...], mask_temp_list[e_idx, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            #invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
+
+            #azimuth_temp_list[e_idx, 0] = next_state[0]
+            #elevation_temp_list[e_idx, 0] = next_state[1]
             
             log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
                 next_state[1], model_id, time.time()-tic))
-            #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
+            #R_list[e_idx, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
             ## 1. update vox_list using MVnet
             #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
@@ -305,39 +325,71 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
     for i_idx in range(test_episode_num):
         state, model_id = senv.reset(True)
         actions = []
-        RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
-        invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
-        elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
 
-        #R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
-        #vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-        #    dtype=np.float32)
+        mvnet_input = MVInputs(FLAGS, batch_size = 1) #bs 1 because we are testing
+        
+        # RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
+        # invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
+        # mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
+        # azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
+        # elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
 
-        RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+        # #R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
+        # #vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
+        # #    dtype=np.float32)
 
-        azimuth_temp_list[0, 0] = state[0][0]
-        elevation_temp_list[0, 0] = state[1][0]
+        # RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
+        # invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
+
+        # azimuth_temp_list[0, 0] = state[0][0]
+        # elevation_temp_list[0, 0] = state[1][0]
 
         ## run simulations and get memories
-        for e_idx in range(FLAGS.max_episode_length-1):
-            ## processing mask
-            mask_temp_list = (mask_temp_list > 0.5).astype(np.float32)
-            mask_temp_list *= (invZ_temp_list >= 1e-6)
 
-            mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list)
-            active_mv_action = active_mv.select_action(mvnet_input, e_idx, is_training=False) 
+        azimuth = state[0][0][None, ...]
+        elevation = state[1][0][None, ...]
+
+        rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
+        invz = replay_mem.read_invZ(azimuth, elevation, model_id)
+        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+        #expand last axis for some inputs
+        invz = invz[..., None]
+        mask = mask[..., None]
+        azimuth = azimuth[..., None]
+        elevation = elevation[..., None]
+        
+        single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+        mvnet_input.put(single_input, episode_idx = 0)
+
+        for e_idx in range(1, FLAGS.max_episode_length):
+
+            active_mv_action = active_mv.select_action(mvnet_input, e_idx-1, is_training=False) 
             actions.append(active_mv_action)
             state, next_state, done, model_id = senv.step(actions[-1])
+
+            azimuth = next_state[0]
+            elevation = next_state[1]
+
+            rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
+            invz = replay_mem.read_invZ(azimuth, elevation, model_id)
+            mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+            #expand last axis for some inputs
+            invz = invz[..., None]
+            mask = mask[..., None]
+            azimuth = azimuth[..., None]
+            elevation = elevation[..., None]
             
-            RGB_temp_list[e_idx+1, ...], mask_temp_list[e_idx+1, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
+            #RGB_temp_list[e_idx, ...], mask_temp_list[e_idx, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
 
-            invZ_temp_list[e_idx+1, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
+            #invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
 
-            azimuth_temp_list[e_idx+1, 0] = next_state[0]
-            elevation_temp_list[e_idx+1, 0] = next_state[1]
+            #azimuth_temp_list[e_idx, 0] = next_state[0]
+            #elevation_temp_list[e_idx, 0] = next_state[1]
+            
+            single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+            mvnet_input.put(single_input, episode_idx = e_idx)
             
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
             ## TODO: update vox_temp
@@ -355,7 +407,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
 
-        mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, vox = vox_gt)
+        mvnet_input.put_voxel(vox_gt)
         vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(mvnet_input)
         
         vox_final_ = vox_final_list[-1, ...]
@@ -540,7 +592,7 @@ if __name__ == "__main__":
     #if FLAGS.restore:
     #    restore(ae)
     train(active_mv)
-
+    
     # z_list = []
     # test_demo_render_z(ae, z_list)
 

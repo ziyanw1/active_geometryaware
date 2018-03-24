@@ -347,17 +347,9 @@ class ReplayMemory():
             voxel = self.read_vox(voxel_name)
 
             mvinputs.put_voxel(voxel, batch_idx = b_idx)
-            
-            #azim_batch[b_idx, ..., 0] = np.asarray(data_.states[0])
-            #elev_batch[b_idx, ..., 0] = np.asarray(data_.states[1])
-            #actions_batch[b_idx, ...] = np.asarray(np.expand_dims(data_.actions, axis=1))
 
             for l_idx in range(self.max_episode_length):
-                #RGB_list_batch[b_idx, l_idx, ...], mask_list_batch[b_idx, l_idx, :, :, 0] = self.read_png_to_uint8(
-                #    azim_batch[b_idx, l_idx], elev_batch[b_idx, l_idx], model_id)
-                #invZ_list_batch[b_idx, l_idx, :, :, 0] = self.read_invZ(azim_batch[b_idx, l_idx],
-                #    elev_batch[b_idx, l_idx], model_id)
-
+                
                 azimuth = azimuths[l_idx]
                 elevation = elevations[l_idx]
                 action = actions[l_idx] if (l_idx < self.max_episode_length-1) else None

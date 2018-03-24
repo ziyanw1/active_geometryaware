@@ -438,12 +438,7 @@ class ActiveMVnet(object):
             keys.append('action')
             
         for key in keys:
-
-            ph_input = getattr(mvnet_inputs, key)
-            if not train_mode:
-                ph_input = ph_input[None, ...]
-
-            feed_dict[getattr(placeholders, key)] = ph_input
+            feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
 
         return feed_dict
 
@@ -534,7 +529,7 @@ class MVInputs(object):
     def __init__(self, FLAGS, batch_size = None):
 
         self.FLAGS = FLAGS
-        self.BS = FLAGS.batch_size if batch_size else batch_size
+        self.BS = FLAGS.batch_size if (batch_size is None) else batch_size
 
         self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
         self.make_zeros_for_shape = lambda x: np.zeros(self.make_shape(x), dtype = np.float32)

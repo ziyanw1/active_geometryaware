@@ -51,8 +51,8 @@ class ShapeNetEnv():
         self.test_len = len(self.test_list)
         self.step_count = 0
         self.current_model = None
-        self.current_azim = 0
-        self.current_elev = 30
+        self.current_azim = np.float32(0.0)
+        self.current_elev = np.float32(30.0)
         self.prev_azims = []
         self.prev_elevs = []
         self.test_count = 0
@@ -77,29 +77,33 @@ class ShapeNetEnv():
 
         self.prev_azims += [self.current_azim]
         self.prev_elevs += [self.current_elev]
+
+        MAX_ELEV = np.float(60.0)
+        MIN_ELEV = np.float(10.0)
+        
         if action == 0:
             self.current_azim = np.mod(self.current_azim + 10, 360)
         elif action == 1:
             self.current_azim = np.mod(self.current_azim - 10, 360)
         elif action == 2:
-            self.current_elev = min(self.current_elev + 10, 60)
+            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
         elif action == 3:
-            self.current_elev = max(self.current_elev - 10, 10)
+            self.current_elev = np.maximum(self.current_elev - 10, 10)
         elif action == 4:
             self.current_azim = np.mod(self.current_azim + 10, 360)
-            self.current_elev = min(self.current_elev + 10, 60)
+            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
         elif action == 5:
             self.current_azim = np.mod(self.current_azim + 10, 360)
-            self.current_elev = max(self.current_elev - 10, 10)
+            self.current_elev = np.maximum(self.current_elev - 10, MIN_ELEV)
         elif action == 6:
             self.current_azim = np.mod(self.current_azim - 10, 360)
-            self.current_elev = min(self.current_elev + 10, 60)
+            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
         elif action == 7:
             self.current_azim = np.mod(self.current_azim - 10, 360)
-            self.current_elev = max(self.current_elev - 10, 10)
+            self.current_elev = np.maximum(self.current_elev - 10, MIN_ELEV)
         else:
             raise Exception, 'bad action'
-            
+
         self.step_count += 1
         if self.step_count == self.max_episode_length - 1:
             done = True
