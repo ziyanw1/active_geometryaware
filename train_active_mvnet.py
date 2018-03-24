@@ -376,7 +376,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         mvnet_input = MVInput(RGB_temp_list, invZ_temp_list, mask_temp_list, azimuth_temp_list, elevation_temp_list, vox = vox_gt)
         vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(mvnet_input)
         
-        vox_final_ = np.squeeze(vox_final_list[-1, ...])
+        vox_final_ = np.copy(np.squeeze(vox_final_list[-1, ...]))
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
         final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
