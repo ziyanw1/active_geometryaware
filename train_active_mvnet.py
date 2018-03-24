@@ -21,6 +21,9 @@ import time
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.misc as sm
+from utils import logger
+log_string = logger.log_string
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'models'))
@@ -36,6 +39,7 @@ import psutil
 import gc
 import resource
 
+from rollout import Rollout
 
 np.random.seed(0)
 tf.set_random_seed(0)
@@ -129,10 +133,6 @@ FLAGS.BN_DECAY_DECAY_RATE = 0.5
 FLAGS.BN_DECAY_DECAY_STEP = float(FLAGS.decay_step)
 FLAGS.BN_DECAY_CLIP = 0.99
 
-def log_string(out_str):
-    FLAGS.LOG_FOUT.write(out_str+'\n')
-    FLAGS.LOG_FOUT.flush()
-    print(out_str)
 
 def prepare_plot():
     plt.figure(1, figsize=(16, 32))
@@ -202,74 +202,20 @@ def train(active_mv):
         #sys.exit()
         ###
 
+    rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
+
     for i_idx in range(FLAGS.max_iter):
-        state, model_id = senv.reset(True)
-        actions = []
 
-        mvnet_input = MVInputs(FLAGS, batch_size = 1)
+        rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
         
-        azimuth = state[0][0][None, ...]
-        elevation = state[1][0][None, ...]
-
-        rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
-        invz = replay_mem.read_invZ(azimuth, elevation, model_id)
-        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-        #expand last axis for some inputs
-        invz = invz[..., None]
-        mask = mask[..., None]
-        azimuth = azimuth[..., None]
-        elevation = elevation[..., None]
+        # #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
+        # ## TODO: 
+        # ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
+        # ## 2. update vox_feature_list using unproject and aggregator
         
-        single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
-
-        mvnet_input.put(single_input, episode_idx = 0)
-        
-        #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
-        ## TODO: 
-        ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
-        ## 2. update vox_feature_list using unproject and aggregator
-        for e_idx in range(1, FLAGS.max_episode_length):
-            ## processing mask
-            
-            tic = time.time()
-            agent_action = active_mv.select_action(mvnet_input, e_idx-1)
-            actions.append(agent_action)
-            state, next_state, done, model_id = senv.step(actions[-1])
-            
-            azimuth = next_state[0]
-            elevation = next_state[1]
-
-            rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
-            invz = replay_mem.read_invZ(azimuth, elevation, model_id)
-            mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-            #expand last axis for some inputs
-            invz = invz[..., None]
-            mask = mask[..., None]
-            azimuth = azimuth[..., None]
-            elevation = elevation[..., None]
-
-            single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
-            mvnet_input.put(single_input, episode_idx = e_idx)
-            
-            log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
-                next_state[1], model_id, time.time()-tic))
-            #R_list[e_idx, ...] = replay_mem.get_R(next_state[0], next_state[1])
-            ## TODO: update vox_temp
-            ## 1. update vox_list using MVnet
-            #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            #vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
-            if done:
-                traj_state = state
-                traj_state[0] += [next_state[0]]
-                traj_state[1] += [next_state[1]]
-                ## TODO: 
-                ## 1. get reward by vox_list
-                #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
-                temp_traj = trajectData(traj_state, actions, model_id)
-                replay_mem.append(temp_traj)
-                break
+        #         ## TODO: 
+        #         ## 1. get reward by vox_list
+        #         #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
 
         ## TODO: get batch of
         ## 1. rgb image sequence and transfer it to depth/mask/sn sequence
@@ -277,12 +223,11 @@ def train(active_mv):
         ## TODO: train
         ## 1. using given sequence data and ground truth voxel, train MVnet
         ## 2. for #max_episode_length times, train aggregator and agent policy network
+        
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
         
         tic = time.time()
-
         out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
-        
         recon_loss = out_stuff[1]
         reinforce_loss = out_stuff[2]
         summary_train = out_stuff[-1]
@@ -306,75 +251,24 @@ def train(active_mv):
             save(active_mv, i_idx, i_idx, i_idx) 
 
         if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx)
+            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj)
             tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
             tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
             tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 
-def evaluate(active_mv, test_episode_num, replay_mem, iter):
+def evaluate(active_mv, test_episode_num, replay_mem, iter, rollout_obj):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
     rewards_list = []
     IoU_list = []
     loss_list = []
-    for i_idx in range(test_episode_num):
-        state, model_id = senv.reset(True)
-        actions = []
-
-        mvnet_input = MVInputs(FLAGS, batch_size = 1) #bs 1 because we are testing
-
-        azimuth = state[0][0][None, ...]
-        elevation = state[1][0][None, ...]
-
-        rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
-        invz = replay_mem.read_invZ(azimuth, elevation, model_id)
-        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-        #expand last axis for some inputs
-        invz = invz[..., None]
-        mask = mask[..., None]
-        azimuth = azimuth[..., None]
-        elevation = elevation[..., None]
         
-        single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
-        mvnet_input.put(single_input, episode_idx = 0)
+    for i_idx in range(test_episode_num):
 
-        for e_idx in range(1, FLAGS.max_episode_length):
+        mvnet_input = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
 
-            active_mv_action = active_mv.select_action(mvnet_input, e_idx-1, is_training=False) 
-            actions.append(active_mv_action)
-            state, next_state, done, model_id = senv.step(actions[-1])
-
-            azimuth = next_state[0]
-            elevation = next_state[1]
-
-            rgb, mask = replay_mem.read_png_to_uint8(azimuth, elevation, model_id)
-            invz = replay_mem.read_invZ(azimuth, elevation, model_id)
-            mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-            #expand last axis for some inputs
-            invz = invz[..., None]
-            mask = mask[..., None]
-            azimuth = azimuth[..., None]
-            elevation = elevation[..., None]
-            
-            single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
-            mvnet_input.put(single_input, episode_idx = e_idx)
-            
-            #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])
-            ## TODO: update vox_temp
-            #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, e_idx+1) 
-            #vox_temp = np.squeeze(vox_temp_list[e_idx+1, ...])
-            if done:
-                traj_state = state
-                traj_state[0] += [next_state[0]]
-                traj_state[1] += [next_state[1]]
-                #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
-                #temp_traj = trajectData(traj_state, actions, rewards, model_id)
-                break
-
-
+        model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         vox_gt = replay_mem.read_vox(voxel_name)
 
@@ -553,8 +447,8 @@ if __name__ == "__main__":
     ##os.system('cp train.py %s' % (FLAGS.LOG_DIR)) # bkp of train procedure
 
 
-    FLAGS.LOG_FOUT = open(os.path.join(FLAGS.LOG_DIR, 'log_train.txt'), 'w')
-    FLAGS.LOG_FOUT.write(str(FLAGS)+'\n')
+    logger.FLAGS.LOG_FOUT = open(os.path.join(FLAGS.LOG_DIR, 'log_train.txt'), 'w')
+    logger.FLAGS.LOG_FOUT.write(str(FLAGS)+'\n')
 
     ##prepare_plot()
     #log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))

@@ -1,7 +1,8 @@
 *~
 *#*
 *.pyc
-log*
+*log
+log_agent
 vis*
 *lock
 data/data_cache
