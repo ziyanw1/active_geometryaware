@@ -529,7 +529,24 @@ class ActiveMVnet(object):
         out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
         return out_stuff
 
-class SingleInput(object): #typically from a single rollout step
+class SingleInputFactory(object):
+    def __init__(self, mem):
+        self.mem = mem
+
+    def make(self, azimuth, elevation, model_id, action = None):
+        rgb, mask = self.mem.read_png_to_uint8(azimuth, elevation, model_id)
+        invz = self.mem.read_invZ(azimuth, elevation, model_id)
+        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
+
+        invz = invz[..., None]
+        mask = mask[..., None]
+        azimuth = azimuth[..., None]
+        elevation = elevation[..., None]
+        
+        single_input = SingleInput(rgb, invz, mask, azimuth, elevation, action = action)
+        return single_input
+    
+class SingleInput(object): 
     def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
         self.rgb = rgb
         self.invz = invz

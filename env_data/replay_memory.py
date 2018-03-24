@@ -11,7 +11,7 @@ from lsm.mvnet import MVNet
 from lsm.utils import Bunch, get_session_config
 from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
-from models.active_mvnet import MVInputs, SingleInput
+from models.active_mvnet import MVInputs, SingleInput, SingleInputFactory
 
 sys.path.append(os.path.join('utils'))
 from util import downsample
@@ -45,13 +45,15 @@ class ReplayMemory():
         self.resolution = FLAGS.resolution
         self.data_dir = 'data/data_cache/blender_renderings/{}/res128_{}_all/'.format(self.FLAGS.category,
             cat_name[self.FLAGS.category])
-        
+
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
         config.log_device_placement = False
         self.sess = tf.Session(config=config)
 
+        self.input_factory = SingleInputFactory(self)
+        
         #from lsm.net_vlsm import net
         #self.vlsm = net
         #log_dir = os.path.join('lsm/models_lsm_v1/vlsm-release/train')
@@ -329,8 +331,6 @@ class ReplayMemory():
     #     return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
     
     def get_batch_list(self, batch_size=4):
-        #returns SingleInput
-
         mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
 
         for b_idx in range(batch_size):
@@ -354,18 +354,7 @@ class ReplayMemory():
                 elevation = elevations[l_idx]
                 action = actions[l_idx] if (l_idx < self.max_episode_length-1) else None
 
-                rgb, mask = self.read_png_to_uint8(azimuth, elevation, model_id)
-                invz = self.read_invZ(azimuth, elevation, model_id)
-                mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-                #expand last axis for some inputs
-                invz = invz[..., None]
-                mask = mask[..., None]
-                azimuth = azimuth[..., None]
-                elevation = elevation[..., None]
-                
-                single_input = SingleInput(rgb, invz, mask, azimuth, elevation, action)
-
+                single_input = self.input_factory.make(azimuth, elevation, model_id, action = action)
                 mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
 
         return mvinputs

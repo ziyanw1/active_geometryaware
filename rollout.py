@@ -2,7 +2,7 @@
 
 from utils.logger import log_string
 import time
-from models.active_mvnet import MVInputs, SingleInput
+from models.active_mvnet import MVInputs, SingleInput, SingleInputFactory
 import numpy as np
 from replay_memory import trajectData
 
@@ -11,26 +11,16 @@ class Rollout(object):
         self.agent = agent
         self.env = env
         self.mem = memory
+        self.input_factory = SingleInputFactory(memory)
         self.FLAGS = FLAGS
         
     def single_input_for_state(self, state):
-        model_id = self.env.current_model
-        
-        azimuth = np.array(state[0])
-        elevation = np.array(state[1])
-
-        rgb, mask = self.mem.read_png_to_uint8(azimuth, elevation, model_id)
-        invz = self.mem.read_invZ(azimuth, elevation, model_id)
-        mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
-
-        invz = invz[..., None]
-        mask = mask[..., None]
-        azimuth = azimuth[..., None]
-        elevation = elevation[..., None]
-        
-        single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
-        return single_input
-
+        return self.input_factory.make(
+            azimuth = np.array(state[0]),
+            elevation = np.array(state[1]),
+            model_id = self.env.current_model
+        )
+    
     def go(self, i_idx, verbose = True, add_to_mem = True):
         ''' does 1 rollout, returns mvnet_input'''
 
