@@ -408,3 +408,141 @@ class ActiveMVnet(object):
             self.merge_train_list = [self.summary_learning_rate, self.summary_loss_recon_train,
                 self.summary_loss_reinforce_train, self.summary_reward_batch_train]
             self.merged_train = tf.summary.merge(self.merge_train_list)
+
+    def get_placeholders(self, include_vox, include_action, train_mode):
+        
+        placeholders = lambda: None
+        if train_mode:
+            placeholders.rgb = self.RGB_list_batch
+            placeholders.invz = self.invZ_list_batch
+            placeholders.mask = self.mask_list_batch
+            placeholders.azimuth = self.azimuth_list_batch
+            placeholders.elevation = self.elevation_list_batch
+
+            if include_action:
+                placeholders.action = self.action_list_batch
+            if include_vox:
+                placeholders.vox = self.vox_batch
+
+        else:
+            placeholders.rgb = self.RGB_list_test
+            placeholders.invz = self.invZ_list_test
+            placeholders.mask = self.mask_list_test
+            placeholders.azimuth = self.azimuth_list_test
+            placeholders.elevation = self.elevation_list_test
+
+            if include_action:
+                placeholders.action = self.action_list_test
+            if include_vox:
+                placeholders.vox = self.vox_test
+
+        return placeholders
+
+    def construct_feed_dict(self, mvnet_inputs, include_vox, include_action, train_mode = True):
+
+        placeholders = self.get_placeholders(include_vox, include_action, train_mode = train_mode)
+
+        feed_dict = {self.is_training: train_mode}
+
+        keys = ['rgb', 'invz', 'mask', 'azimuth', 'elevation']
+        if include_vox:
+            assert mvnet_inputs.vox is not None
+            keys.append('vox')
+        if include_action:
+            assert mvnet_inputs.action is not None
+            keys.append('action')
+            
+        for key in keys:
+
+            ph_input = getattr(mvnet_inputs, key)
+            if not train_mode:
+                ph_input = ph_input[None, ...]
+
+            feed_dict[getattr(placeholders, key)] = ph_input
+
+        return feed_dict
+
+    def select_action(self, mvnet_input, idx, is_training = False):
+        
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = False, include_action = False, train_mode = is_training
+        )
+    
+        #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+        #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
+        #else:
+        #    return np.random.randint(low=0, high=FLAGS.action_num)
+        stuff = self.sess.run([self.action_prob_test], feed_dict=feed_dict)
+        action_prob = stuff[0][idx]
+        if is_training:
+            a_response = np.random.choice(action_prob, p=action_prob)
+
+            a_idx = np.argmax(action_prob == a_response)
+        else:
+            a_idx = np.argmax(action_prob)
+        return a_idx
+
+    def predict_vox_list(self, mvnet_input, is_training = False):
+
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = True, include_action = False, train_mode = is_training
+        )
+        
+        #if np.random.uniform(low=0.0, high=1.0) > epsilon:
+        #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
+        #else:
+        #    return np.random.randint(low=0, high=FLAGS.action_num)
+        vox_test_list, recon_loss_list, rewards_test = self.sess.run([
+            self.vox_pred_test, self.recon_loss_list_test,
+            self.reward_raw_test], feed_dict=feed_dict)
+        
+        return vox_test_list, recon_loss_list, rewards_test
+
+    def run_step(self, mvnet_input, mode, is_training = True):
+        '''mode is one of 'burnin', 'train' '''
+        
+        feed_dict = self.construct_feed_dict(
+            mvnet_input, include_vox = True, include_action = True, train_mode = is_training
+        )
+
+        if mode == 'burnin':
+            ops_to_run = [
+                self.unproj_grid_batch,
+                self.opt_recon,
+                self.recon_loss,
+                self.recon_loss_list,
+                self.action_prob,
+                self.reward_batch_list,
+                self.reward_raw_batch,
+                self.loss_reinforce,
+            ]
+        elif mode == 'train':
+            ops_to_run = [
+                self.unproj_grid_batch,
+                self.recon_loss,
+                self.loss_reinforce,
+                self.recon_loss_list,
+                self.action_prob,
+                self.reward_batch_list,
+                self.reward_raw_batch,
+                self.opt_recon,
+                self.opt_reinforce,
+                self.merged_train
+            ]     
+        else:
+            assert 'bad mode'
+        
+        out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
+        return out_stuff
+        
+
+class MVInput(object):
+    def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
+        self.rgb = rgb
+        self.invz = invz
+        self.mask = mask
+        self.azimuth = azimuth
+        self.elevation = elevation
+        self.vox = vox
+        self.action = action
+
