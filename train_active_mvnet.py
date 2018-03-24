@@ -169,6 +169,25 @@ def restore_from_iter(ae, iter):
     ae.saver.restore(ae.sess, ckpt_path)
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
+def burnin_log(i, out_stuff, t):
+    recon_loss = out_stuff.recon_loss
+    log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, recon_loss, t))
+    
+
+def train_log(i, out_stuff, t):
+    recon_loss = out_stuff.recon_loss/(FLAGS.max_episode_length*FLAGS.batch_size)
+    mean_episode_reward = None
+    reinforce_loss = out_stuff.loss_reinforce
+    mean_episode_reward = np.mean(np.sum(out_stuff.reward_raw_batch, axis=1), axis=0)
+    log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(
+        i, recon_loss, mean_episode_reward, reinforce_loss, t))
+
+def eval_log(i, out_stuff, iou):
+    reward = np.sum(out_stuff.reward_raw_test)
+    losses = out_stuff.recon_loss_list_test
+    log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
+        i, reward, iou, losses))
+    
 def train(active_mv):
     
     senv = ShapeNetEnv(FLAGS)
@@ -193,30 +212,37 @@ def train(active_mv):
     if FLAGS.burn_in_iter > 0:
         for i in range(FLAGS.burn_in_iter):
             mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
-
             tic = time.time()
-
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
-            
-            log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, out_stuff[2], time.time()-tic))
-        #sys.exit()
-        ###
+            burnin_log(i, out_stuff, time.time()-tic)
 
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
     for i_idx in range(FLAGS.max_iter):
-
         rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
+        mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+
+        tic = time.time()
+        out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
+
+        train_log(i, out_stuff, time.time()-tic)        
+        active_mv.train_writer.add_summary(out_stuff.merged_train, i_idx)
+
+        if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
+            save(active_mv, i_idx, i_idx, i_idx)
+            
+        if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj)
         
         # #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         # ## TODO: 
         # ## 1. forward pass for rgb and get depth/mask/sn/R use rgb2dep
         # ## 2. update vox_feature_list using unproject and aggregator
-        
+
         #         ## TODO: 
         #         ## 1. get reward by vox_list
         #         #rewards = replay_mem.get_seq_rewards(RGB_temp_list, R_list, K_list, model_id)
-
+        
         ## TODO: get batch of
         ## 1. rgb image sequence and transfer it to depth/mask/sn sequence
         ## 2. given depth/mask/sn/ sequence and transfer it to list of feature_vox using aggregator and encoder 
@@ -224,21 +250,10 @@ def train(active_mv):
         ## 1. using given sequence data and ground truth voxel, train MVnet
         ## 2. for #max_episode_length times, train aggregator and agent policy network
         
-        mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
-        
-        tic = time.time()
-        out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
-        recon_loss = out_stuff[1]
-        reinforce_loss = out_stuff[2]
-        summary_train = out_stuff[-1]
-        mean_episode_reward = np.mean(np.sum(out_stuff[6], axis=1), axis=0)
-        log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(i_idx,
-            recon_loss/(FLAGS.max_episode_length*FLAGS.batch_size), mean_episode_reward, 
-            reinforce_loss, time.time()-tic))
-        active_mv.train_writer.add_summary(summary_train, i_idx)
         #rgb_batch, vox_batch, reward_batch, action_batch = replay_mem.get_batch(FLAGS.batch_size)
         #print 'reward_batch: {}'.format(reward_batch)
         #print 'rewards: {}'.format(rewards)
+        
         ## TODO train model and do logging & evaluation
         #feed_dict = {agent.is_training: True, agent.rgb_batch: rgb_batch, agent.vox_batch: vox_batch, agent.reward_batch: reward_batch,
         #    agent.action_batch: action_batch}
@@ -247,16 +262,7 @@ def train(active_mv):
         #tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
         #agent.train_writer.add_summary(merge_summary, i_idx)
 
-        if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
-            save(active_mv, i_idx, i_idx, i_idx) 
-
-        if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            eval_r_mean, eval_IoU_mean, eval_loss_mean = evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj)
-            tf_util.save_scalar(i_idx, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
-            tf_util.save_scalar(i_idx, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
-            tf_util.save_scalar(i_idx, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
-
-def evaluate(active_mv, test_episode_num, replay_mem, iter, rollout_obj):
+def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
@@ -273,18 +279,19 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter, rollout_obj):
         vox_gt = replay_mem.read_vox(voxel_name)
 
         mvnet_input.put_voxel(vox_gt)
-        vox_final_list, recon_loss_list, rewards_test = active_mv.predict_vox_list(mvnet_input)
+        pred_out = active_mv.predict_vox_list(mvnet_input)
         
-        vox_final_ = np.copy(np.squeeze(vox_final_list[-1, ...]))
+        vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
         final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
         #final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
-        log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
-            i_idx, np.sum(rewards_test), final_IoU, recon_loss_list))
-        rewards_list.append(np.sum(rewards_test))
+        
+        eval_log(i_idx, pred_out, final_IoU)
+        
+        rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
-        loss_list.append(recon_loss_list)
+        loss_list.append(pred_out.recon_loss_list_test)
 
         if FLAGS.if_save_eval:
             save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
@@ -292,7 +299,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter, rollout_obj):
             eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
-            eval_dir = os.path.join(eval_dir, '{}'.format(iter))
+            eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
 
@@ -303,7 +310,13 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter, rollout_obj):
     IoU_list = np.asarray(IoU_list)
     loss_list = np.asarray(loss_list)
 
-    return np.mean(rewards_list), np.mean(IoU_list), np.mean(loss_list)
+    eval_r_mean = np.mean(rewards_list)
+    eval_IoU_mean = np.mean(IoU_list)
+    eval_loss_mean = np.mean(loss_list)
+    
+    tf_util.save_scalar(train_i, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 
 # def test(agent, test_episode_num, model_iter):
 #     senv = ShapeNetEnv(FLAGS)

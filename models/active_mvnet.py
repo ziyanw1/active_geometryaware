@@ -16,7 +16,7 @@ def lrelu(x, leak=0.2, name='lrelu'):
         f1 = 0.5 * (1+leak)
         f2 = 0.5 * (1-leak)
         return f1*x + f2 * abs(x)
-
+    
 class ActiveMVnet(object):
     def __init__(self, FLAGS):
         self.FLAGS = FLAGS
@@ -72,6 +72,8 @@ class ActiveMVnet(object):
         if FLAGS.is_training:
             self._create_optimizer()
         self._create_summary()
+
+        self._create_collections()
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
@@ -408,6 +410,29 @@ class ActiveMVnet(object):
                 self.summary_loss_reinforce_train, self.summary_reward_batch_train]
             self.merged_train = tf.summary.merge(self.merge_train_list)
 
+    def _create_collections(self):
+        dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
+        
+        self.vox_prediction_collection = dict2obj(dct_from_keys(
+            ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test']
+        ))
+
+        burnin_list = [
+            'unproj_grid_batch',
+            'opt_recon',
+            'recon_loss',
+            'recon_loss_list',
+            'action_prob',
+            'reward_batch_list',
+            'reward_raw_batch',
+            'loss_reinforce',
+        ]
+
+        train_list = burnin_list[:] + ['opt_reinforce', 'merged_train']
+
+        self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
+        self.train_collection = dict2obj(dct_from_keys(train_list))
+            
     def get_placeholders(self, include_vox, include_action, train_mode):
         
         placeholders = lambda: None
@@ -456,6 +481,12 @@ class ActiveMVnet(object):
 
         return feed_dict
 
+    def run_collection_with_fd(self, obj, fd):
+        dct = obj2dict(obj)
+        outputs = self.sess.run(dct, feed_dict = fd)
+        obj = dict2obj(outputs)
+        return obj
+
     def select_action(self, mvnet_input, idx, is_training = False):
         
         feed_dict = self.construct_feed_dict(
@@ -486,49 +517,30 @@ class ActiveMVnet(object):
         #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
         #else:
         #    return np.random.randint(low=0, high=FLAGS.action_num)
-        vox_test_list, recon_loss_list, rewards_test = self.sess.run([
-            self.vox_pred_test, self.recon_loss_list_test,
-            self.reward_raw_test], feed_dict=feed_dict)
-        
-        return vox_test_list, recon_loss_list, rewards_test
+        return self.run_collection_with_fd(self.vox_prediction_collection, feed_dict)
 
     def run_step(self, mvnet_input, mode, is_training = True):
-        '''mode is one of 'burnin', 'train' '''
-        
+        '''mode is one of ['burnin', 'train'] '''
         feed_dict = self.construct_feed_dict(
             mvnet_input, include_vox = True, include_action = True, train_mode = is_training
         )
 
         if mode == 'burnin':
-            ops_to_run = [
-                self.unproj_grid_batch,
-                self.opt_recon,
-                self.recon_loss,
-                self.recon_loss_list,
-                self.action_prob,
-                self.reward_batch_list,
-                self.reward_raw_batch,
-                self.loss_reinforce,
-            ]
+            collection_to_run = self.burnin_collection
         elif mode == 'train':
-            ops_to_run = [
-                self.unproj_grid_batch,
-                self.recon_loss,
-                self.loss_reinforce,
-                self.recon_loss_list,
-                self.action_prob,
-                self.reward_batch_list,
-                self.reward_raw_batch,
-                self.opt_recon,
-                self.opt_reinforce,
-                self.merged_train
-            ]     
-        else:
-            assert 'bad mode'
-        
-        out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
-        return out_stuff
+            collection_to_run = self.train_collection
 
+        return self.run_collection_with_fd(collection_to_run, feed_dict)
+
+def obj2dict(obj):
+    return obj.__dict__
+
+def dict2obj(dct):
+    x = lambda: None
+    for key, val in dct.items():
+        setattr(x, key, val)
+    return x
+    
 class SingleInputFactory(object):
     def __init__(self, mem):
         self.mem = mem
