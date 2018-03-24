@@ -10,4 +10,4 @@ voxels
 *.png
 *.pyc
 *.npy
-*.nfs
+*.nfs*

@@ -251,12 +251,6 @@ def train(active_mv):
             single_input = MVInput(rgb, invz, mask, azimuth, elevation)
             mvnet_input.put(single_input, episode_idx = e_idx)
             
-            #RGB_temp_list[e_idx, ...], mask_temp_list[e_idx, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-            #invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
-
-            #azimuth_temp_list[e_idx, 0] = next_state[0]
-            #elevation_temp_list[e_idx, 0] = next_state[1]
-            
             log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
                 next_state[1], model_id, time.time()-tic))
             #R_list[e_idx, ...] = replay_mem.get_R(next_state[0], next_state[1])
@@ -327,24 +321,6 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         actions = []
 
         mvnet_input = MVInputs(FLAGS, batch_size = 1) #bs 1 because we are testing
-        
-        # RGB_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3), dtype=np.float32)
-        # invZ_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        # mask_temp_list = np.zeros((FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1), dtype=np.float32)
-        # azimuth_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
-        # elevation_temp_list = np.zeros((FLAGS.max_episode_length, 1), dtype=np.float32)
-
-        # #R_list = np.zeros((FLAGS.max_episode_length, 3, 4), dtype=np.float32)
-        # #vox_temp = np.zeros((FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution),
-        # #    dtype=np.float32)
-
-        # RGB_temp_list[0, ...], mask_temp_list[0, ..., 0] = replay_mem.read_png_to_uint8(state[0][0], state[1][0], model_id)
-        # invZ_temp_list[0, ..., 0] = replay_mem.read_invZ(state[0][0], state[1][0], model_id)
-
-        # azimuth_temp_list[0, 0] = state[0][0]
-        # elevation_temp_list[0, 0] = state[1][0]
-
-        ## run simulations and get memories
 
         azimuth = state[0][0][None, ...]
         elevation = state[1][0][None, ...]
@@ -380,13 +356,6 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             mask = mask[..., None]
             azimuth = azimuth[..., None]
             elevation = elevation[..., None]
-            
-            #RGB_temp_list[e_idx, ...], mask_temp_list[e_idx, ..., 0] = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
-
-            #invZ_temp_list[e_idx, ..., 0] = replay_mem.read_invZ(next_state[0], next_state[1], model_id)
-
-            #azimuth_temp_list[e_idx, 0] = next_state[0]
-            #elevation_temp_list[e_idx, 0] = next_state[1]
             
             single_input = MVInput(rgb, invz, mask, azimuth, elevation)
             mvnet_input.put(single_input, episode_idx = e_idx)
