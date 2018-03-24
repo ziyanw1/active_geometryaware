@@ -515,7 +515,7 @@ class ActiveMVnet(object):
         out_stuff = self.sess.run(ops_to_run, feed_dict=feed_dict)
         return out_stuff
 
-class MVInput(object):
+class SingleInput(object): #typically from a single rollout step
     def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
         self.rgb = rgb
         self.invz = invz

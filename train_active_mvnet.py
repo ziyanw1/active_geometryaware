@@ -29,7 +29,7 @@ sys.path.append(os.path.join(BASE_DIR, 'env_data'))
 import tf_util
 
 #from visualizers import VisVox
-from active_mvnet import ActiveMVnet, MVInput, MVInputs
+from active_mvnet import ActiveMVnet, SingleInput, MVInputs
 from shapenet_env import ShapeNetEnv
 from replay_memory import ReplayMemory, trajectData
 import psutil
@@ -219,7 +219,7 @@ def train(active_mv):
         azimuth = azimuth[..., None]
         elevation = elevation[..., None]
         
-        single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+        single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
 
         mvnet_input.put(single_input, episode_idx = 0)
         
@@ -248,7 +248,7 @@ def train(active_mv):
             azimuth = azimuth[..., None]
             elevation = elevation[..., None]
 
-            single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+            single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
             mvnet_input.put(single_input, episode_idx = e_idx)
             
             log_string('Iter: {}, e_idx: {}, azim: {}, elev: {}, model_id: {}, time: {}s'.format(i_idx, e_idx, next_state[0], 
@@ -335,7 +335,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
         azimuth = azimuth[..., None]
         elevation = elevation[..., None]
         
-        single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+        single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
         mvnet_input.put(single_input, episode_idx = 0)
 
         for e_idx in range(1, FLAGS.max_episode_length):
@@ -357,7 +357,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, iter):
             azimuth = azimuth[..., None]
             elevation = elevation[..., None]
             
-            single_input = MVInput(rgb, invz, mask, azimuth, elevation)
+            single_input = SingleInput(rgb, invz, mask, azimuth, elevation)
             mvnet_input.put(single_input, episode_idx = e_idx)
             
             #R_list[e_idx+1, ...] = replay_mem.get_R(next_state[0], next_state[1])

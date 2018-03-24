@@ -80,7 +80,7 @@ class ShapeNetEnv():
 
         MAX_ELEV = np.float(60.0)
         MIN_ELEV = np.float(10.0)
-        
+
         if action == 0:
             self.current_azim = np.mod(self.current_azim + 10, 360)
         elif action == 1:

@@ -11,7 +11,7 @@ from lsm.mvnet import MVNet
 from lsm.utils import Bunch, get_session_config
 from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
-from models.active_mvnet import MVInputs, MVInput
+from models.active_mvnet import MVInputs, SingleInput
 
 sys.path.append(os.path.join('utils'))
 from util import downsample
@@ -329,7 +329,7 @@ class ReplayMemory():
     #     return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
     
     def get_batch_list(self, batch_size=4):
-        #returns MVInput
+        #returns SingleInput
 
         mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
 
@@ -364,7 +364,7 @@ class ReplayMemory():
                 azimuth = azimuth[..., None]
                 elevation = elevation[..., None]
                 
-                single_input = MVInput(rgb, invz, mask, azimuth, elevation, action)
+                single_input = SingleInput(rgb, invz, mask, azimuth, elevation, action)
 
                 mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
 
