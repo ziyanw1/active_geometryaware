@@ -323,7 +323,7 @@ class ActiveMVnet(object):
         else:
             ## add coefficient to postive samples
             recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(targets=ground_truth_voxels, 
-                logits=tf.squeeze(self.vox_list_logits, axis=-1), pos_weight=1e4, name='recon_loss_mat')
+                logits=tf.squeeze(self.vox_list_logits, axis=-1), pos_weight=self.FLAGS.loss_coef, name='recon_loss_mat')
         self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
         ## --------------- train -------------------
@@ -334,7 +334,7 @@ class ActiveMVnet(object):
         else:
             ## add coefficient to postive samples
             recon_loss_mat_test = tf.nn.weighted_cross_entropy_with_logits(targets=self.vox_list_test,
-                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), pos_weight=1e4, name='recon_loss_mat_test')
+                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), pos_weight=self.FLAGS.loss_coef, name='recon_loss_mat_test')
         recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
             logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
         self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, axis=[2,3,4], name='recon_loss_list_test')

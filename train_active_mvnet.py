@@ -87,6 +87,7 @@ flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
+flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [default: 10]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
