@@ -24,55 +24,15 @@ class ActiveMVnet(object):
         #self.replay_mem = ReplayMemory(FLAGS)
         self.unproj_net = unproject_tools(FLAGS)
 
-        self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
         self.activation_fn = lrelu
         self.counter = tf.Variable(0, trainable=False, dtype=tf.int32)
-        ## inputs/outputs for policy network of active camera
-        self.RGB_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3], name='RGB_list_batch')
-        self.invZ_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_batch')
-        self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
-        
-        self.azimuth_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='azimuth_list_batch')
-        self.elevation_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='elevation_list_batch')
-        
-        self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
-        ## inputs/outputs for aggregtor
 
-        ## inputs/outputs for MVnet
-        self.vox_batch = tf.placeholder(dtype=tf.float32,
-            shape=[FLAGS.batch_size, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
-            name='vox_batch') ## [BS, V, V, V]
-        self.vox_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
-            name='vox_batch') ## [BS, V, V, V]
-        self.vox_list_batch = tf.tile(tf.expand_dims(self.vox_batch, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
-        self.vox_list_test = tf.tile(tf.expand_dims(self.vox_test, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
-
-        ## TEST: inputs for policy network of active camera
-        self.RGB_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3], name='RGB_list_test')
-        self.invZ_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_test')
-        self.mask_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_test')
-
-        self.azimuth_list_test = tf.placeholder(dtype=tf.float32, 
-            shape=[1, FLAGS.max_episode_length, 1], name='azimuth_list_test')
-        self.elevation_list_test = tf.placeholder(dtype=tf.float32, 
-            shape=[1, FLAGS.max_episode_length, 1], name='elevation_list_test')
-        
+        self._create_placeholders()
         self._create_network()
         self._create_loss()
-
         if FLAGS.is_training:
             self._create_optimizer()
         self._create_summary()
-
         self._create_collections()
         
         # Add ops to save and restore all variable 
@@ -88,6 +48,42 @@ class ActiveMVnet(object):
 
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
+    def _create_placeholders(self):
+        
+        self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
+
+        self.train_provider = ShapeProvider(self.FLAGS)
+        self.test_provider = ShapeProvider(self.FLAGS, batch_size = 1)
+
+        self.train_provider.make_tf_ph()
+        self.test_provider.make_tf_ph()
+        
+        self.RGB_list_batch = self.train_provider.rgb_ph
+        self.invZ_list_batch = self.train_provider.invz_ph
+        self.mask_list_batch = self.train_provider.mask_ph
+        self.azimuth_list_batch = self.train_provider.azimuth_ph
+        self.elevation_list_batch = self.train_provider.elevation_ph
+        self.action_list_batch = self.train_provider.action_ph
+        self.vox_batch = self.train_provider.vox_ph
+        
+        self.vox_list_batch = tf.tile(
+            tf.expand_dims(self.vox_batch, axis=1),
+            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
+        ) #[BS, EP, V, V, V]
+
+        self.RGB_list_test = self.test_provider.rgb_ph
+        self.invZ_list_test = self.test_provider.invz_ph
+        self.mask_list_test = self.test_provider.mask_ph
+        self.azimuth_list_test = self.test_provider.azimuth_ph
+        self.elevation_list_test = self.test_provider.elevation_ph
+        self.action_list_test = self.test_provider.action_ph
+        self.vox_test = self.test_provider.vox_ph
+        
+        self.vox_list_test = tf.tile(
+            tf.expand_dims(self.vox_test, axis=1),
+            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
+        ) #[BS, EP, V, V, V]
+        
     def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False, scope_name='dqn_two_stream'):
         with tf.variable_scope(scope_name) as scope:
             if reuse:
@@ -572,25 +568,53 @@ class SingleInput(object):
         self.vox = vox
         self.action = action
 
+class ShapeProvider(object):
+    def __init__(self, FLAGS, batch_size = None):
+        self.BS = FLAGS.batch_size if (batch_size is None) else batch_size
+        
+        self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
+
+        self.rgb_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 3))
+        self.invz_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
+        self.mask_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
+        self.vox_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
+        
+        self.azimuth_shape = self.make_shape((1,))
+        self.elevation_shape = self.make_shape((1,))
+        self.action_shape = (self.BS, FLAGS.max_episode_length-1, 1)
+
+        self.dtypes = {
+            'rgb': np.float32,
+            'invz': np.float32,
+            'mask': np.float32,
+            'vox': np.float32,
+            'azimuth': np.float32,
+            'elevation': np.float32,
+            'action': np.int32,
+        }
+
+    def make_np_zeros(self, dest = None, suffix = '_np'):
+        if dest is None:
+            dest = self
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+            arr = np.zeros(getattr(self, key+'_shape'), dtype = self.dtypes[key])
+            setattr(dest, key+suffix, arr)
+
+    def make_tf_ph(self, dest = None, suffix = '_ph'):
+        if dest is None:
+            dest = self
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+            ph = tf.placeholder(shape = getattr(self, key+'_shape'), dtype = self.dtypes[key])
+            setattr(self, key+suffix, ph)
+        
 class MVInputs(object):
     def __init__(self, FLAGS, batch_size = None):
 
         self.FLAGS = FLAGS
         self.BS = FLAGS.batch_size if (batch_size is None) else batch_size
 
-        self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
-        self.make_zeros_for_shape = lambda x: np.zeros(self.make_shape(x), dtype = np.float32)
-
-        self.rgb = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 3))
-        self.invz = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
-        self.mask = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
-
-        voxel_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
-        self.vox = np.zeros(voxel_shape, np.float32)
-        
-        self.azimuth = self.make_zeros_for_shape((1,))
-        self.elevation = self.make_zeros_for_shape((1,))
-        self.action = self.make_zeros_for_shape((1,))[:,:-1] #trim out the last episode step
+        self.provider = ShapeProvider(FLAGS, batch_size = batch_size)
+        self.provider.make_np_zeros(dest = self, suffix = '')
 
     def put_voxel(self, voxel, batch_idx = 0):
         assert 0 <= batch_idx < self.BS
