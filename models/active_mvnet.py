@@ -134,18 +134,28 @@ class ActiveMVnet(object):
     
     def _create_unet3d(self, vox_feat, channels, trainable=True, if_bn=False, reuse=False, scope_name='unet_3d'):
 
-        return other.nets.unet_same(
-            vox_feat, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
-            is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
-        )
+        if self.FLAGS.unet_name == 'U_SAME':
+            return other.nets.unet_same(
+                vox_feat, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
+                is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
+        elif self.FLAGS.unet_name == 'OUTLINE':
+            raise Exception, 'not yet implemented'
+        else:
+            raise Exception, 'not a valid unet name'
     
     def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False,
                              scope_name='aggr_64'):
 
-        return other.nets.gru_aggregator(
-            unproj_grids, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
-            is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
-        )
+        if self.FLAGS.agg_name == 'GRU':
+            return other.nets.gru_aggregator(
+                unproj_grids, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
+                is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
+        elif self.FLAGS.unet_name == 'OUTLINE':
+            raise Exception, 'not yet implemented'
+        else:
+            raise Exception, 'not a valid agg name'
 
     def _create_policy_net(self):
         self.rgb_batch_norm = tf.subtract(self.rgb_batch, 0.5)
