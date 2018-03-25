@@ -429,9 +429,11 @@ class ActiveMVnet(object):
         ]
 
         train_list = burnin_list[:] + ['opt_reinforce', 'merged_train']
+        train_mvnet_list = burnin_list[:] + ['merged_train']
 
         self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
         self.train_collection = dict2obj(dct_from_keys(train_list))
+        self.train_mvnet_collection = dict2obj(dct_from_keys(train_mvnet_list))
             
     def get_placeholders(self, include_vox, include_action, train_mode):
         
@@ -529,6 +531,8 @@ class ActiveMVnet(object):
             collection_to_run = self.burnin_collection
         elif mode == 'train':
             collection_to_run = self.train_collection
+        elif mode == 'train_mv':
+            collection_to_run = self.train_mvnet_collection
 
         return self.run_collection_with_fd(collection_to_run, feed_dict)
 
