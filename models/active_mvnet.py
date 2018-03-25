@@ -84,7 +84,9 @@ class ActiveMVnet(object):
             [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
         ) #[BS, EP, V, V, V]
         
-    def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False, scope_name='dqn_two_stream'):
+    def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False,
+                               scope_name='dqn_two_stream'):
+        
         with tf.variable_scope(scope_name) as scope:
             if reuse:
                 scope.reuse_variables()
@@ -192,7 +194,9 @@ class ActiveMVnet(object):
             
         return tf.nn.sigmoid(net_out_), net_out_
 
-    def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False, scope_name='aggr_64'):
+    def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False,
+                             scope_name='aggr_64'):
+        
         with tf.variable_scope(scope_name) as scope:
             if reuse:
                 scope.reuse_variables()
@@ -256,28 +260,59 @@ class ActiveMVnet(object):
         self.elevation_test = collapse_dims(self.elevation_list_test)        
         ## --------------- test  -------------------
         with tf.device('/gpu:0'):
+            
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm, self.azimuth_batch, self.elevation_batch)
-            self.unproj_grid_test = self.unproj_net.unproject_batch(self.invZ_test, self.mask_test, self.RGB_test_norm, self.azimuth_test, self.elevation_test)
+            self.unproj_grid_batch = self.unproj_net.unproject_batch(
+                self.invZ_batch,
+                self.mask_batch,
+                self.RGB_batch_norm,
+                self.azimuth_batch,
+                self.elevation_batch
+            )
+            
+            self.unproj_grid_test = self.unproj_net.unproject_batch(
+                self.invZ_test,
+                self.mask_test,
+                self.RGB_test_norm,
+                self.azimuth_test,
+                self.elevation_test
+            )
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
             ## --------------- train -------------------
+            
+            ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
             self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
+                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') 
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
-            self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
+
+            self.vox_pred, vox_logits = self._create_unet3d(
+                self.vox_feat,
+                channels=7,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                scope_name='unet_3d'
+            )
+            
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            
             ## --------------- train -------------------
             ## --------------- test  -------------------
             self.vox_feat_list_test = self._create_aggregator64(self.unproj_grid_test, channels=7,
                 if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='aggr_64')
 
             self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
-            self.vox_pred_test, vox_test_logits = self._create_unet3d(self.vox_feat_test, channels=7,
-                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='unet_3d')
+            
+            self.vox_pred_test, vox_test_logits = self._create_unet3d(
+                self.vox_feat_test,
+                channels=7,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='unet_3d'
+            )
+            
             self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
         
