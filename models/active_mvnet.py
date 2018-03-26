@@ -300,7 +300,8 @@ class ActiveMVnet(object):
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
         ## --------------- test  -------------------
 
-        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len, r_name=None):
+
+        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len, r_name=None, reward_weight=10):
             
             reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
@@ -318,12 +319,12 @@ class ActiveMVnet(object):
                     reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
                         reward_batch_list[:,i+1:]])
 
-            return 10*reward_batch_list, 10*reward_raw_batch
+            return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1)
+            self.FLAGS.max_episode_length-1, r_name=None, reward_weight=self.FLAGS.reward_weight)
         self.reward_test_list, self.reward_raw_test = process_loss_to_reward(self.recon_loss_list_test, self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1, r_name='test')
+            self.FLAGS.max_episode_length-1, r_name='test', reward_weight=self.FLAGS.reward_weight)
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
