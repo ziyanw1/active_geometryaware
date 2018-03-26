@@ -78,6 +78,12 @@ flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
 flags.DEFINE_integer('max_iter', 1000000, 'Decay step for lr decay [default: 200000]')
 # arch (magenta)
 flags.DEFINE_string('network_name', 'ae', 'Name for network architecture used for rgb to depth')
+
+flags.DEFINE_string('unet_name', 'U_SAME', '')
+#options: U_SAME, OUTLINE
+flags.DEFINE_string('agg_name', 'GRU', '')
+#options: GRU, OUTLINE
+
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
@@ -282,6 +288,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
         vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
+        vox_final_list = np.squeeze(pred_out.vox_pred_test)
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
         final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
