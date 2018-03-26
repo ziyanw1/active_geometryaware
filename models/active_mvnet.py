@@ -24,55 +24,15 @@ class ActiveMVnet(object):
         #self.replay_mem = ReplayMemory(FLAGS)
         self.unproj_net = unproject_tools(FLAGS)
 
-        self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
         self.activation_fn = lrelu
         self.counter = tf.Variable(0, trainable=False, dtype=tf.int32)
-        ## inputs/outputs for policy network of active camera
-        self.RGB_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3], name='RGB_list_batch')
-        self.invZ_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_batch')
-        self.mask_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_batch')
-        
-        self.azimuth_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='azimuth_list_batch')
-        self.elevation_list_batch = tf.placeholder(dtype=tf.float32, 
-            shape=[FLAGS.batch_size, FLAGS.max_episode_length, 1], name='elevation_list_batch')
-        
-        self.action_list_batch = tf.placeholder(dtype=tf.int32, shape=[FLAGS.batch_size, FLAGS.max_episode_length-1, 1], name='action_batch')
-        ## inputs/outputs for aggregtor
 
-        ## inputs/outputs for MVnet
-        self.vox_batch = tf.placeholder(dtype=tf.float32,
-            shape=[FLAGS.batch_size, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
-            name='vox_batch') ## [BS, V, V, V]
-        self.vox_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution],
-            name='vox_batch') ## [BS, V, V, V]
-        self.vox_list_batch = tf.tile(tf.expand_dims(self.vox_batch, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
-        self.vox_list_test = tf.tile(tf.expand_dims(self.vox_test, axis=1), [1, FLAGS.max_episode_length, 1 ,1 ,1]) ##[BS, EP, V, V, V]
-
-        ## TEST: inputs for policy network of active camera
-        self.RGB_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 3], name='RGB_list_test')
-        self.invZ_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='invZ_list_test')
-        self.mask_list_test = tf.placeholder(dtype=tf.float32,
-            shape=[1, FLAGS.max_episode_length, FLAGS.resolution, FLAGS.resolution, 1], name='mask_list_test')
-
-        self.azimuth_list_test = tf.placeholder(dtype=tf.float32, 
-            shape=[1, FLAGS.max_episode_length, 1], name='azimuth_list_test')
-        self.elevation_list_test = tf.placeholder(dtype=tf.float32, 
-            shape=[1, FLAGS.max_episode_length, 1], name='elevation_list_test')
-        
+        self._create_placeholders()
         self._create_network()
         self._create_loss()
-
         if FLAGS.is_training:
             self._create_optimizer()
         self._create_summary()
-
         self._create_collections()
         
         # Add ops to save and restore all variable 
@@ -88,7 +48,45 @@ class ActiveMVnet(object):
 
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
 
-    def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False, scope_name='dqn_two_stream'):
+    def _create_placeholders(self):
+        
+        self.is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
+
+        self.train_provider = ShapeProvider(self.FLAGS)
+        self.test_provider = ShapeProvider(self.FLAGS, batch_size = 1)
+
+        self.train_provider.make_tf_ph()
+        self.test_provider.make_tf_ph()
+        
+        self.RGB_list_batch = self.train_provider.rgb_ph
+        self.invZ_list_batch = self.train_provider.invz_ph
+        self.mask_list_batch = self.train_provider.mask_ph
+        self.azimuth_list_batch = self.train_provider.azimuth_ph
+        self.elevation_list_batch = self.train_provider.elevation_ph
+        self.action_list_batch = self.train_provider.action_ph
+        self.vox_batch = self.train_provider.vox_ph
+        
+        self.vox_list_batch = tf.tile(
+            tf.expand_dims(self.vox_batch, axis=1),
+            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
+        ) #[BS, EP, V, V, V]
+
+        self.RGB_list_test = self.test_provider.rgb_ph
+        self.invZ_list_test = self.test_provider.invz_ph
+        self.mask_list_test = self.test_provider.mask_ph
+        self.azimuth_list_test = self.test_provider.azimuth_ph
+        self.elevation_list_test = self.test_provider.elevation_ph
+        self.action_list_test = self.test_provider.action_ph
+        self.vox_test = self.test_provider.vox_ph
+        
+        self.vox_list_test = tf.tile(
+            tf.expand_dims(self.vox_test, axis=1),
+            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
+        ) #[BS, EP, V, V, V]
+        
+    def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False,
+                               scope_name='dqn_two_stream'):
+        
         with tf.variable_scope(scope_name) as scope:
             if reuse:
                 scope.reuse_variables()
@@ -136,103 +134,28 @@ class ActiveMVnet(object):
     
     def _create_unet3d(self, vox_feat, channels, trainable=True, if_bn=False, reuse=False, scope_name='unet_3d'):
 
-        with tf.variable_scope(scope_name) as scope:
-            if reuse:
-                scope.reuse_variables()
+        if self.FLAGS.unet_name == 'U_SAME':
+            return other.nets.unet_same(
+                vox_feat, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
+                is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
+        elif self.FLAGS.unet_name == 'OUTLINE':
+            raise Exception, 'not yet implemented'
+        else:
+            raise Exception, 'not a valid unet name'
+    
+    def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False,
+                             scope_name='aggr_64'):
 
-            if if_bn:
-                batch_normalizer_gen = slim.batch_norm
-                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
-            else:
-                #self._print_arch('=== NOT Using BN for GENERATOR!')
-                batch_normalizer_gen = None
-                batch_norm_params_gen = None
-
-            if self.FLAGS.if_l2Reg:
-                weights_regularizer = slim.l2_regularizer(1e-5)
-            else:
-                weights_regularizer = None
-
-            with slim.arg_scope([slim.fully_connected],
-                    activation_fn=self.activation_fn,
-                    trainable=trainable,
-                    normalizer_fn=batch_normalizer_gen,
-                    normalizer_params=batch_norm_params_gen,
-                    weights_regularizer=weights_regularizer):
-
-                net_down1 = slim.conv3d(vox_feat, 16, kernel_size=4, stride=2, padding='SAME', scope='unet_conv1')
-                net_down2 = slim.conv3d(net_down1, 32, kernel_size=4, stride=2, padding='SAME', scope='unet_conv2')
-                net_down3 = slim.conv3d(net_down2, 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
-                net_down4 = slim.conv3d(net_down3, 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
-                net_down5 = slim.conv3d(net_down4, 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
-
-                net_up4 = slim.conv3d_transpose(net_down5, 128, kernel_size=4, stride=2, padding='SAME', \
-                    scope='unet_deconv4')
-                net_up4_ = tf.concat([net_up4, net_down4], axis=-1)
-                net_up3 = slim.conv3d_transpose(net_up4_, 64, kernel_size=4, stride=2, padding='SAME', \
-                    scope='unet_deconv3')
-                net_up3_ = tf.concat([net_up3, net_down3], axis=-1)
-                net_up2 = slim.conv3d_transpose(net_up3_, 32, kernel_size=4, stride=2, padding='SAME', \
-                    scope='unet_deconv2')
-                net_up2_ = tf.concat([net_up2, net_down2], axis=-1)
-                net_up1 = slim.conv3d_transpose(net_up2_, 16, kernel_size=4, stride=2, padding='SAME', \
-                    scope='unet_deconv1')
-                net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
-                #net_out_ = slim.conv3d(net_up1_, 1, kernel_size=4, stride=2, padding='SAME', \
-                #    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
-                ## heavy load
-                net_up0 = slim.conv3d_transpose(net_up1_, channels, kernel_size=4, stride=2, padding='SAME', \
-                    scope='unet_deconv0')
-                net_up0_ = tf.concat([net_up0, vox_feat], axis=-1)
-                net_out_ = slim.conv3d(net_up0_, 1, kernel_size=3, stride=1, padding='SAME', \
-                    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
-                ## heavy load
-                #net_up2_ = tf.add(net_up2, net_down2)
-                #net_up1 = slim.conv3d_transpose(net_up2_, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', \
-                #    scope='unet_deconv1')
-                #net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
-                #net_out_ = slim.conv3d_transpose(net_up1_, out_channel, kernel_size=[4,4], stride=[2,2], padding='SAME', \
-                #    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
-            
-        return tf.nn.sigmoid(net_out_), net_out_
-
-    def _create_aggregator64(self, unproj_grids, channels, trainable=True, if_bn=False, reuse=False, scope_name='aggr_64'):
-        with tf.variable_scope(scope_name) as scope:
-            if reuse:
-                scope.reuse_variables()
-
-            if if_bn:
-                batch_normalizer_gen = slim.batch_norm
-                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
-            else:
-                #self._print_arch('=== NOT Using BN for GENERATOR!')
-                batch_normalizer_gen = None
-                batch_norm_params_gen = None
-
-            if self.FLAGS.if_l2Reg:
-                weights_regularizer = slim.l2_regularizer(1e-5)
-            else:
-                weights_regularizer = None
-            
-            ## create fuser
-            with slim.arg_scope([slim.fully_connected],
-                    activation_fn=self.activation_fn,
-                    trainable=trainable,
-                    normalizer_fn=batch_normalizer_gen,
-                    normalizer_params=batch_norm_params_gen,
-                    weights_regularizer=weights_regularizer):
-                
-                net_unproj = slim.conv3d(unproj_grids, 16, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
-                #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv2')
-                #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv3')
-        
-                ## the input for convgru should be in shape of [bs, episode_len, vox_reso, vox_reso, vox_reso, ch]
-                #net_unproj = uncollapse_dims(net_unproj, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
-                net_unproj = uncollapse_dims(net_unproj, unproj_grids.get_shape().as_list()[0]/self.FLAGS.max_episode_length, 
-                    self.FLAGS.max_episode_length)
-                net_pool_grid, _ = convgru(net_unproj, filters=channels) ## should be shape of [bs, len, vox_reso x 3, ch] 
-
-        return net_pool_grid
+        if self.FLAGS.agg_name == 'GRU':
+            return other.nets.gru_aggregator(
+                unproj_grids, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
+                is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
+        elif self.FLAGS.unet_name == 'OUTLINE':
+            raise Exception, 'not yet implemented'
+        else:
+            raise Exception, 'not a valid agg name'
 
     def _create_policy_net(self):
         self.rgb_batch_norm = tf.subtract(self.rgb_batch, 0.5)
@@ -260,28 +183,59 @@ class ActiveMVnet(object):
         self.elevation_test = collapse_dims(self.elevation_list_test)        
         ## --------------- test  -------------------
         with tf.device('/gpu:0'):
+            
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject_batch(self.invZ_batch, self.mask_batch, self.RGB_batch_norm, self.azimuth_batch, self.elevation_batch)
-            self.unproj_grid_test = self.unproj_net.unproject_batch(self.invZ_test, self.mask_test, self.RGB_test_norm, self.azimuth_test, self.elevation_test)
+            self.unproj_grid_batch = self.unproj_net.unproject_batch(
+                self.invZ_batch,
+                self.mask_batch,
+                self.RGB_batch_norm,
+                self.azimuth_batch,
+                self.elevation_batch
+            )
+            
+            self.unproj_grid_test = self.unproj_net.unproject_batch(
+                self.invZ_test,
+                self.mask_test,
+                self.RGB_test_norm,
+                self.azimuth_test,
+                self.elevation_test
+            )
         
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
             ## --------------- train -------------------
+            
+            ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
             self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
+                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') 
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
-            self.vox_pred, vox_logits = self._create_unet3d(self.vox_feat, channels=7,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='unet_3d') ## [BSxEP, V, V, V, 1], channels should correspond with aggregator
+
+            self.vox_pred, vox_logits = self._create_unet3d(
+                self.vox_feat,
+                channels=7,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                scope_name='unet_3d'
+            )
+            
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            
             ## --------------- train -------------------
             ## --------------- test  -------------------
             self.vox_feat_list_test = self._create_aggregator64(self.unproj_grid_test, channels=7,
                 if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='aggr_64')
 
             self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
-            self.vox_pred_test, vox_test_logits = self._create_unet3d(self.vox_feat_test, channels=7,
-                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='unet_3d')
+            
+            self.vox_pred_test, vox_test_logits = self._create_unet3d(
+                self.vox_feat_test,
+                channels=7,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='unet_3d'
+            )
+            
             self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
         
@@ -572,25 +526,53 @@ class SingleInput(object):
         self.vox = vox
         self.action = action
 
+class ShapeProvider(object):
+    def __init__(self, FLAGS, batch_size = None):
+        self.BS = FLAGS.batch_size if (batch_size is None) else batch_size
+        
+        self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
+
+        self.rgb_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 3))
+        self.invz_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
+        self.mask_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
+        self.vox_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
+        
+        self.azimuth_shape = self.make_shape((1,))
+        self.elevation_shape = self.make_shape((1,))
+        self.action_shape = (self.BS, FLAGS.max_episode_length-1, 1)
+
+        self.dtypes = {
+            'rgb': np.float32,
+            'invz': np.float32,
+            'mask': np.float32,
+            'vox': np.float32,
+            'azimuth': np.float32,
+            'elevation': np.float32,
+            'action': np.int32,
+        }
+
+    def make_np_zeros(self, dest = None, suffix = '_np'):
+        if dest is None:
+            dest = self
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+            arr = np.zeros(getattr(self, key+'_shape'), dtype = self.dtypes[key])
+            setattr(dest, key+suffix, arr)
+
+    def make_tf_ph(self, dest = None, suffix = '_ph'):
+        if dest is None:
+            dest = self
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+            ph = tf.placeholder(shape = getattr(self, key+'_shape'), dtype = self.dtypes[key])
+            setattr(self, key+suffix, ph)
+        
 class MVInputs(object):
     def __init__(self, FLAGS, batch_size = None):
 
         self.FLAGS = FLAGS
         self.BS = FLAGS.batch_size if (batch_size is None) else batch_size
 
-        self.make_shape = lambda x: (self.BS, FLAGS.max_episode_length) + x
-        self.make_zeros_for_shape = lambda x: np.zeros(self.make_shape(x), dtype = np.float32)
-
-        self.rgb = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 3))
-        self.invz = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
-        self.mask = self.make_zeros_for_shape((FLAGS.resolution, FLAGS.resolution, 1))
-
-        voxel_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
-        self.vox = np.zeros(voxel_shape, np.float32)
-        
-        self.azimuth = self.make_zeros_for_shape((1,))
-        self.elevation = self.make_zeros_for_shape((1,))
-        self.action = self.make_zeros_for_shape((1,))[:,:-1] #trim out the last episode step
+        self.provider = ShapeProvider(FLAGS, batch_size = batch_size)
+        self.provider.make_np_zeros(dest = self, suffix = '')
 
     def put_voxel(self, voxel, batch_idx = 0):
         assert 0 <= batch_idx < self.BS

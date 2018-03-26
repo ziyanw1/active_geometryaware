@@ -78,6 +78,12 @@ flags.DEFINE_float('decay_rate', 0.7, 'Decay rate for lr decay [default: 0.8]')
 flags.DEFINE_integer('max_iter', 1000000, 'Decay step for lr decay [default: 200000]')
 # arch (magenta)
 flags.DEFINE_string('network_name', 'ae', 'Name for network architecture used for rgb to depth')
+
+flags.DEFINE_string('unet_name', 'U_SAME', '')
+#options: U_SAME, OUTLINE
+flags.DEFINE_string('agg_name', 'GRU', '')
+#options: GRU, OUTLINE
+
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
@@ -295,11 +301,19 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         loss_list.append(pred_out.recon_loss_list_test)
 
         if FLAGS.if_save_eval:
-            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
-                'RGB_list': RGB_temp_list}
+            
+            save_dict = {
+                'voxel_list': vox_final_list,
+                'vox_gt': vox_gt,
+                'model_id': model_id,
+                'states': traj_state,
+                'RGB_list': RGB_temp_list
+            }
+            
             eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
+                
             eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
