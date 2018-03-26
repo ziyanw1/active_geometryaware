@@ -437,19 +437,14 @@ def dump_outputs(save_dict, train_i, i_idx):
     mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
     sio.savemat(mat_save_name, save_dict)
 
-    # for key, val in save_dict.items():
-    #     print key
-    #     print type(val)
-    #     if isinstance(val, np.ndarray):
-    #         print val.shape
-    
     gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
-    pred_save_name = os.path.join(eval_dir, '{}_pred.binvox'.format(i_idx))
-
     save_voxel(save_dict['vox_gt'], gt_save_name)
     for i in range(FLAGS.max_episode_length):
         pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
         save_voxel(save_dict['voxel_list'][i], pred_save_name)
+
+        img_save_name = os.path.join(eval_dir, '{}_rgb{}.png'.format(i_idx, i))
+        other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
     
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
