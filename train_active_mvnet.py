@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.misc as sm
 from utils import logger
+import other
 log_string = logger.log_string
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -434,7 +435,31 @@ def dump_outputs(save_dict, train_i, i_idx):
 
     mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
     sio.savemat(mat_save_name, save_dict)
+
+    # for key, val in save_dict.items():
+    #     print key
+    #     print type(val)
+    #     if isinstance(val, np.ndarray):
+    #         print val.shape
     
+    gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
+    pred_save_name = os.path.join(eval_dir, '{}_pred.binvox'.format(i_idx))
+
+    save_voxel(save_dict['vox_gt'], gt_save_name)
+    save_voxel(save_dict['voxel_list'][-1], pred_save_name)
+    
+def save_voxel(vox, pth):
+    THRESHOLD = 0.5
+    binvox_obj = other.binvox_rw.Voxels(
+        vox > THRESHOLD,
+        dims = [FLAGS.voxel_resolution]*3,
+        translate = [0.0, 0.0, 0.0],
+        scale = 1.0,
+        axis_order = 'xyz'
+    )
+    with open(pth, 'wb') as f:
+        binvox_obj.write(f)
+        
 if __name__ == "__main__":
     #MODEL = importlib.import_module(FLAGS.model_file) # import network module
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
