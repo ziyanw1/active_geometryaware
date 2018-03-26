@@ -80,27 +80,28 @@ class ShapeNetEnv():
 
         MAX_ELEV = np.float(60.0)
         MIN_ELEV = np.float(10.0)
-
+        DELTA = self.FLAGS.delta
+        
         if action == 0:
-            self.current_azim = np.mod(self.current_azim + 10, 360)
+            self.current_azim = np.mod(self.current_azim + DELTA, 360)
         elif action == 1:
-            self.current_azim = np.mod(self.current_azim - 10, 360)
+            self.current_azim = np.mod(self.current_azim - DELTA, 360)
         elif action == 2:
-            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
+            self.current_elev = np.minimum(self.current_elev + DELTA, MAX_ELEV)
         elif action == 3:
-            self.current_elev = np.maximum(self.current_elev - 10, 10)
+            self.current_elev = np.maximum(self.current_elev - DELTA, MIN_ELEV)
         elif action == 4:
-            self.current_azim = np.mod(self.current_azim + 10, 360)
-            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
+            self.current_azim = np.mod(self.current_azim + DELTA, 360)
+            self.current_elev = np.minimum(self.current_elev + DELTA, MAX_ELEV)
         elif action == 5:
-            self.current_azim = np.mod(self.current_azim + 10, 360)
-            self.current_elev = np.maximum(self.current_elev - 10, MIN_ELEV)
+            self.current_azim = np.mod(self.current_azim + DELTA, 360)
+            self.current_elev = np.maximum(self.current_elev - DELTA, MIN_ELEV)
         elif action == 6:
-            self.current_azim = np.mod(self.current_azim - 10, 360)
-            self.current_elev = np.minimum(self.current_elev + 10, MAX_ELEV)
+            self.current_azim = np.mod(self.current_azim - DELTA, 360)
+            self.current_elev = np.minimum(self.current_elev + DELTA, MAX_ELEV)
         elif action == 7:
-            self.current_azim = np.mod(self.current_azim - 10, 360)
-            self.current_elev = np.maximum(self.current_elev - 10, MIN_ELEV)
+            self.current_azim = np.mod(self.current_azim - DELTA, 360)
+            self.current_elev = np.maximum(self.current_elev - DELTA, MIN_ELEV)
         else:
             raise Exception, 'bad action'
 

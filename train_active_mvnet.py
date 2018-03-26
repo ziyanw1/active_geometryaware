@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.misc as sm
 from utils import logger
+import other
 log_string = logger.log_string
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -53,6 +54,7 @@ flags.DEFINE_string('category', '03001627', 'category Index')
 flags.DEFINE_string('train_filename_prefix', 'train', '')
 flags.DEFINE_string('val_filename_prefix', 'train', '')
 flags.DEFINE_string('test_filename_prefix', 'train', '')
+flags.DEFINE_float('delta', 10.0, 'angle of each movement')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
 flags.DEFINE_string('LOG_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
@@ -434,7 +436,29 @@ def dump_outputs(save_dict, train_i, i_idx):
 
     mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
     sio.savemat(mat_save_name, save_dict)
+
+    gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gt'], gt_save_name)
+    for i in range(FLAGS.max_episode_length):
+        pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
+        save_voxel(save_dict['voxel_list'][i], pred_save_name)
+
+        img_save_name = os.path.join(eval_dir, '{}_rgb{}.png'.format(i_idx, i))
+        other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
     
+def save_voxel(vox, pth):
+    THRESHOLD = 0.5
+    vox = np.transpose(vox, (2, 1, 0))
+    binvox_obj = other.binvox_rw.Voxels(
+        vox > THRESHOLD,
+        dims = [FLAGS.voxel_resolution]*3,
+        translate = [0.0, 0.0, 0.0],
+        scale = 1.0,
+        axis_order = 'xyz'
+    )
+    with open(pth, 'wb') as f:
+        binvox_obj.write(f)
+        
 if __name__ == "__main__":
     #MODEL = importlib.import_module(FLAGS.model_file) # import network module
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
