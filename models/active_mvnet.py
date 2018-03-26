@@ -241,7 +241,7 @@ class ActiveMVnet(object):
         
         ## create active agent
         with tf.device('/gpu:0'):
-            ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do use episode end to train
+            ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do not use episode end to train
             ## --------------- train -------------------
             self.RGB_list_batch_norm_use, _ = tf.split(self.RGB_list_batch_norm, 
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
