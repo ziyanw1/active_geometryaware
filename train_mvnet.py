@@ -301,8 +301,15 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         loss_list.append(pred_out.recon_loss_list_test)
 
         if FLAGS.if_save_eval:
-            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
-                'RGB_list': RGB_temp_list}
+            save_dict = {
+                'voxel_list': vox_final_list,
+                'vox_gt': vox_gt,
+                'model_id': model_id,
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
+            }
+            #save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
+            #    'RGB_list': RGB_temp_list}
             eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
