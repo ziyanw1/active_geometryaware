@@ -302,24 +302,15 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         if FLAGS.if_save_eval:
             
             save_dict = {
-                'voxel_list': vox_final_list,
+                'voxel_list': pred_out.vox_pred_test,
                 'vox_gt': vox_gt,
                 'model_id': model_id,
-                'states': traj_state,
-                'RGB_list': RGB_temp_list
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
             }
+
+            save(save_dict, train_i, i_idx)
             
-            eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
-            if not os.path.exists(eval_dir):
-                os.mkdir(eval_dir)
-                
-            eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
-            if not os.path.exists(eval_dir):
-                os.mkdir(eval_dir)
-
-            mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
-            sio.savemat(mat_save_name, save_dict)
-
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
     loss_list = np.asarray(loss_list)
@@ -431,6 +422,18 @@ def burn_in(senv, replay_mem):
                 replay_mem.append(temp_traj)
                 break
 
+def save(save_dict, train_i, i_idx):
+    eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+                
+    eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+
+    mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
+    sio.savemat(mat_save_name, save_dict)
+    
 if __name__ == "__main__":
     #MODEL = importlib.import_module(FLAGS.model_file) # import network module
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
