@@ -303,7 +303,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         if FLAGS.if_save_eval:
             
             save_dict = {
-                'voxel_list': voxel_final_list,
+                'voxel_list': vox_final_list,
                 'vox_gt': vox_gt,
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
