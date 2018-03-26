@@ -52,6 +52,8 @@ class Rollout(object):
                 if add_to_mem:
                     temp_traj = trajectData(traj_state, actions, model_id)
                     self.mem.append(temp_traj)
-                break
 
+                self.last_trajectory = traj_state                    
+                break
+        
         return mvnet_input
