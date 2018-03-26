@@ -446,7 +446,9 @@ def dump_outputs(save_dict, train_i, i_idx):
     pred_save_name = os.path.join(eval_dir, '{}_pred.binvox'.format(i_idx))
 
     save_voxel(save_dict['vox_gt'], gt_save_name)
-    save_voxel(save_dict['voxel_list'][-1], pred_save_name)
+    for i in range(FLAGS.max_episode_length):
+        pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
+        save_voxel(save_dict['voxel_list'][i], pred_save_name)
     
 def save_voxel(vox, pth):
     THRESHOLD = 0.5

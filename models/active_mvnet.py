@@ -140,7 +140,7 @@ class ActiveMVnet(object):
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
             )
         elif self.FLAGS.unet_name == 'OUTLINE':
-            raise Exception, 'not yet implemented'
+            return vox_feat, tf.zeros_like(vox_feat)
         else:
             raise Exception, 'not a valid unet name'
     
@@ -153,7 +153,11 @@ class ActiveMVnet(object):
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
             )
         elif self.FLAGS.unet_name == 'OUTLINE':
-            raise Exception, 'not yet implemented'
+            bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
+            unproj_grids = uncollapse_dims(unproj_grids, bs, self.FLAGS.max_episode_length)
+            rvals = [tf.reduce_max(unproj_grids[:,:i+1,:,:,:,-1:], axis = 1)
+                     for i in range(self.FLAGS.max_episode_length)]
+            return tf.stack(rvals, axis = 1)
         else:
             raise Exception, 'not a valid agg name'
 
@@ -349,7 +353,11 @@ class ActiveMVnet(object):
         #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var, global_step=self.counter)  
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
         #    global_step=self.counter)
-        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var)  
+
+        #so that we have always have something to optimize
+        self.recon_loss, z = other.tfutil.noop(self.recon_loss)
+        
+        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
         self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
 
     def _create_summary(self):

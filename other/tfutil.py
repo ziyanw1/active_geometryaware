@@ -223,3 +223,7 @@ def batchdim(tensor):
     if list(tensor.get_shape())[0] == None:
         return tf.unstack(tf.shape(tensor))[0]
     return list(tensor.get_shape())[0]
+
+def noop(x):
+    z = tf.Variable(0.0, dtype = tf.float32)
+    return x+z-z, z
