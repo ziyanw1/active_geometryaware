@@ -231,7 +231,7 @@ def train(active_mv):
         tic = time.time()
         out_stuff = active_mv.run_step(mvnet_input, mode='train_mv', is_training = True)
 
-        train_log(i, out_stuff, time.time()-tic)        
+        train_log(i_idx, out_stuff, time.time()-tic)        
         active_mv.train_writer.add_summary(out_stuff.merged_train, i_idx)
 
         if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
