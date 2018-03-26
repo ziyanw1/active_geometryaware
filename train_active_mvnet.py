@@ -54,6 +54,7 @@ flags.DEFINE_string('category', '03001627', 'category Index')
 flags.DEFINE_string('train_filename_prefix', 'train', '')
 flags.DEFINE_string('val_filename_prefix', 'train', '')
 flags.DEFINE_string('test_filename_prefix', 'train', '')
+flags.DEFINE_float('delta', 10.0, 'angle of each movement')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
 flags.DEFINE_string('LOG_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
@@ -452,6 +453,7 @@ def dump_outputs(save_dict, train_i, i_idx):
     
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
+    vox = np.transpose(vox, (2, 1, 0))
     binvox_obj = other.binvox_rw.Voxels(
         vox > THRESHOLD,
         dims = [FLAGS.voxel_resolution]*3,
