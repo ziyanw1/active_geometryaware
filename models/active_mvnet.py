@@ -154,6 +154,9 @@ class ActiveMVnet(object):
                 vox_feat, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
             )
+        elif self.FLAGS.unet_name == 'U_VALID':
+            with tf.variable_scope(scope_name, reuse = reuse):
+                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, return_logits = True)
         elif self.FLAGS.unet_name == 'OUTLINE':
             return vox_feat, tf.zeros_like(vox_feat)
         else:
@@ -163,10 +166,14 @@ class ActiveMVnet(object):
                              scope_name='aggr_64'):
 
         if self.FLAGS.agg_name == 'GRU':
-            unproj_grids = collapse_dims(unproj_grids)
             return other.nets.gru_aggregator(
                 unproj_grids, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
+        elif self.FLAGS.agg_name == 'POOL':
+            return other.nets.pooling_aggregator(
+                unproj_grids, channels, self.FLAGS, trainable = trainable, reuse = reuse,
+                is_training = self.is_training, scope_name = scope_name
             )
         elif self.FLAGS.unet_name == 'OUTLINE':
             #bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
@@ -220,20 +227,25 @@ class ActiveMVnet(object):
                 self.azimuth_list_test,
                 self.elevation_list_test
             )
-        
+
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
             ## --------------- train -------------------
             
             ## [BS, EP, V, V, V, CH], channels should correspond with unet_3d
-            self.vox_feat_list = self._create_aggregator64(self.unproj_grid_batch, channels=7,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='aggr_64') 
+            self.vox_feat_list = self._create_aggregator64(
+                self.unproj_grid_batch,
+                channels=self.FLAGS.agg_channels,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                scope_name='aggr_64'
+            )
 
             self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
 
             self.vox_pred, vox_logits = self._create_unet3d(
                 self.vox_feat,
-                channels=7,
+                channels=self.FLAGS.agg_channels,
                 trainable=True,
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
@@ -243,14 +255,19 @@ class ActiveMVnet(object):
             
             ## --------------- train -------------------
             ## --------------- test  -------------------
-            self.vox_feat_list_test = self._create_aggregator64(self.unproj_grid_test, channels=7,
-                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='aggr_64')
+            self.vox_feat_list_test = self._create_aggregator64(
+                self.unproj_grid_test,
+                channels=self.FLAGS.agg_channels,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='aggr_64'
+            )
 
             self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
             
             self.vox_pred_test, vox_test_logits = self._create_unet3d(
                 self.vox_feat_test,
-                channels=7,
+                channels=self.FLAGS.agg_channels,
                 if_bn=self.FLAGS.if_bn,
                 reuse=tf.AUTO_REUSE,
                 scope_name='unet_3d'

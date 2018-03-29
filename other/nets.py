@@ -470,7 +470,8 @@ def voxel_encoder(inputs, aux, reuse):
     return net
 
 
-def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train', freeze_decoder = False, d0 = 16):
+def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
+                    freeze_decoder = False, d0 = 16, return_logits = False):
 
     input_size = list(inputs.get_shape())[1]
     if input_size == 128:
@@ -563,9 +564,12 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train', freez
             normalizer_fn = None, trainable = decoder_trainable
         )
 
-    net = tf.nn.sigmoid(net)
+    net_ = tf.nn.sigmoid(net)
 
-    return net
+    if return_logits:
+        return net_, net
+    else:
+        return net_
 
 #calling this 'unet_same' because it looks pretty similar to the original network i was using, except using
 #same instead of valid padding on the innermost layer
@@ -600,7 +604,7 @@ def unet_same(vox_feat, channels, FLAGS, trainable=True, if_bn=False, reuse=Fals
             net_down3 = slim.conv3d(net_down2, 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
             net_down4 = slim.conv3d(net_down3, 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
             net_down5 = slim.conv3d(net_down4, 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
-
+            
             net_up4 = slim.conv3d_transpose(net_down5, 128, kernel_size=4, stride=2, padding='SAME', \
                 scope='unet_deconv4')
             net_up4_ = tf.concat([net_up4, net_down4], axis=-1)
@@ -635,6 +639,8 @@ def unet_same(vox_feat, channels, FLAGS, trainable=True, if_bn=False, reuse=Fals
 def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, reuse=False,
                    is_training = True, activation_fn = tf.nn.relu, scope_name='aggr_64'):
 
+    unproj_grids = collapse_dims(unproj_grids)
+    
     with tf.variable_scope(scope_name) as scope:
         if reuse:
             scope.reuse_variables()
@@ -674,3 +680,35 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
             net_pool_grid, _ = convgru(net_unproj, filters=channels) ## should be shape of [bs, len, vox_reso x 3, ch] 
 
     return net_pool_grid
+
+def pooling_aggregator(unproj_grids, channels, FLAGS, trainable=True, reuse=False,
+                       is_training = True, scope_name='aggr_64'):
+
+
+    unproj_grids = collapse_dims(unproj_grids)
+        
+    with tf.variable_scope(scope_name, reuse = reuse) as scope:
+        with slim.arg_scope(
+                [slim.conv3d],
+                trainable=trainable,
+                normalizer_fn=slim.batch_norm,
+                normalizer_params={'is_training': is_training, 'decay': FLAGS.bn_decay}):
+
+            #a simple 1x1 convolution
+            feats = slim.conv3d(unproj_grids, channels, activation_fn = None, kernel_size=1, stride=1)
+
+    feats = uncollapse_dims(
+        feats,
+        feats.get_shape().as_list()[0]/FLAGS.max_episode_length,         
+        FLAGS.max_episode_length
+    )
+    #B x E x V x V X V x C
+    
+    outputs = []
+    base = tf.zeros_like(feats)[:,0] #B x V x V x V x C
+    for i in range(FLAGS.max_episode_length):
+        base = tf.maximum(feats[:,i], base)
+        outputs.append(base)
+
+    #in effect, outputs[i] is the max pool of views [0,i)
+    return tf.stack(outputs, axis = 1)

@@ -86,6 +86,8 @@ flags.DEFINE_string('unet_name', 'U_SAME', '')
 flags.DEFINE_string('agg_name', 'GRU', '')
 #options: GRU, OUTLINE
 
+flags.DEFINE_integer('agg_channels', 16, 'agg_channels')
+
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
 flags.DEFINE_boolean('if_en_bn', True, 'If use batch normalization for the mesh decoder')
