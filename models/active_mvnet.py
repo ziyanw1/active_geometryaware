@@ -8,7 +8,7 @@ from utils import tf_util
 
 from env_data.shapenet_env import ShapeNetEnv, trajectData  
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
-from util_unproj import unproject_tools 
+from util_unproj import Unproject_tools 
 import other
 
 def lrelu(x, leak=0.2, name='lrelu'):
@@ -344,10 +344,21 @@ class ActiveMVnet(object):
 
             return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
 
-        self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(self.recon_loss_list, self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1, r_name=None, reward_weight=self.FLAGS.reward_weight)
-        self.reward_test_list, self.reward_raw_test = process_loss_to_reward(self.recon_loss_list_test, self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1, r_name='test', reward_weight=self.FLAGS.reward_weight)
+        self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
+            self.recon_loss_list,
+            self.FLAGS.gamma,
+            self.FLAGS.max_episode_length-1,
+            r_name=None,
+            reward_weight=self.FLAGS.reward_weight
+        )
+        
+        self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
+            self.recon_loss_list_test,
+            self.FLAGS.gamma,
+            self.FLAGS.max_episode_length-1,
+            r_name='test',
+            reward_weight=self.FLAGS.reward_weight
+        )
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
