@@ -23,7 +23,26 @@ def stack_rotation_objects(rots):
     r2 = np.stack(r2s, axis = 0)
     return r1, r2
 
+def rotate_to_first(az, el):
+    #input: (BS x K, BS x K)
+    
+    #1 is the views axis
+    azs = tf.unstack(az, axis = 1)
+    els = tf.unstack(el, axis = 1)
+    az0 = azs[0]
+    el0 = els[0]
 
+    r1s = []
+    r2s = []
+    for (az1, el1) in zip(azs, els):
+        dtheta = az1-az0
+        r1 = voxel.get_transform_matrix_tf(theta = tf.zeros_like(el1), phi = -el1)
+        r2 = voxel.get_transform_matrix_tf(theta = dtheta, phi = el0)
+
+        r1s.append(r1)
+        r2s.append(r2)
+    return zip(r1s, r2s)
+    
 def unproject_and_rotate(depth, mask, additional, rotation = None):
 
     #order of concate is important

@@ -162,13 +162,14 @@ class ActiveMVnet(object):
                              scope_name='aggr_64'):
 
         if self.FLAGS.agg_name == 'GRU':
+            unproj_grids = collapse_dims(unproj_grids)
             return other.nets.gru_aggregator(
                 unproj_grids, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
             )
         elif self.FLAGS.unet_name == 'OUTLINE':
-            bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
-            unproj_grids = uncollapse_dims(unproj_grids, bs, self.FLAGS.max_episode_length)
+            #bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
+            #unproj_grids = uncollapse_dims(unproj_grids, bs, self.FLAGS.max_episode_length)
             rvals = [tf.reduce_max(unproj_grids[:,:i+1,:,:,:,-1:], axis = 1)
                      for i in range(self.FLAGS.max_episode_length)]
             return tf.stack(rvals, axis = 1)
@@ -187,36 +188,36 @@ class ActiveMVnet(object):
         ## TODO: unproj depth list and merge them using aggregator
         ## collapse data from [BS, EP, H, W, CH] to [BSxEP, H, W, CH]
         ## --------------- train -------------------
-        self.invZ_batch = collapse_dims(self.invZ_list_batch)
-        self.mask_batch = collapse_dims(self.mask_list_batch)
-        self.RGB_batch_norm = collapse_dims(self.RGB_list_batch_norm)
-        self.azimuth_batch = collapse_dims(self.azimuth_list_batch)
-        self.elevation_batch = collapse_dims(self.elevation_list_batch)        
-        ## --------------- train -------------------
-        ## --------------- test  -------------------
-        self.invZ_test = collapse_dims(self.invZ_list_test)
-        self.mask_test = collapse_dims(self.mask_list_test)
-        self.RGB_test_norm = collapse_dims(self.RGB_list_test_norm)
-        self.azimuth_test = collapse_dims(self.azimuth_list_test)
-        self.elevation_test = collapse_dims(self.elevation_list_test)        
+        # self.invZ_batch = collapse_dims(self.invZ_list_batch)
+        # self.mask_batch = collapse_dims(self.mask_list_batch)
+        # self.RGB_batch_norm = collapse_dims(self.RGB_list_batch_norm)
+        # self.azimuth_batch = collapse_dims(self.azimuth_list_batch)
+        # self.elevation_batch = collapse_dims(self.elevation_list_batch)        
+        # ## --------------- train -------------------
+        # ## --------------- test  -------------------
+        # self.invZ_test = collapse_dims(self.invZ_list_test)
+        # self.mask_test = collapse_dims(self.mask_list_test)
+        # self.RGB_test_norm = collapse_dims(self.RGB_list_test_norm)
+        # self.azimuth_test = collapse_dims(self.azimuth_list_test)
+        # self.elevation_test = collapse_dims(self.elevation_list_test)        
         ## --------------- test  -------------------
         with tf.device('/gpu:0'):
             
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject_batch(
-                self.invZ_batch,
-                self.mask_batch,
-                self.RGB_batch_norm,
-                self.azimuth_batch,
-                self.elevation_batch
+            self.unproj_grid_batch = self.unproj_net.unproject(
+                self.invZ_list_batch,
+                self.mask_list_batch,
+                self.RGB_list_batch_norm,
+                self.azimuth_list_batch,
+                self.elevation_list_batch
             )
             
-            self.unproj_grid_test = self.unproj_net.unproject_batch(
-                self.invZ_test,
-                self.mask_test,
-                self.RGB_test_norm,
-                self.azimuth_test,
-                self.elevation_test
+            self.unproj_grid_test = self.unproj_net.unproject(
+                self.invZ_list_test,
+                self.mask_list_test,
+                self.RGB_list_test_norm,
+                self.azimuth_list_test,
+                self.elevation_list_test
             )
         
         ## TODO: collapse vox feature and do inference using unet3d
