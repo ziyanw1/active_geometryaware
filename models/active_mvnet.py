@@ -28,6 +28,7 @@ class ActiveMVnet(object):
         self.counter = tf.Variable(0, trainable=False, dtype=tf.int32)
 
         self._create_placeholders()
+        self._create_ground_truth_voxels()
         self._create_network()
         self._create_loss()
         if FLAGS.is_training:
@@ -66,11 +67,6 @@ class ActiveMVnet(object):
         self.action_list_batch = self.train_provider.action_ph
         self.vox_batch = self.train_provider.vox_ph
         
-        self.vox_list_batch = tf.tile(
-            tf.expand_dims(self.vox_batch, axis=1),
-            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
-        ) #[BS, EP, V, V, V]
-
         self.RGB_list_test = self.test_provider.rgb_ph
         self.invZ_list_test = self.test_provider.invz_ph
         self.mask_list_test = self.test_provider.mask_ph
@@ -78,11 +74,29 @@ class ActiveMVnet(object):
         self.elevation_list_test = self.test_provider.elevation_ph
         self.action_list_test = self.test_provider.action_ph
         self.vox_test = self.test_provider.vox_ph
+
+    def _create_ground_truth_voxels(self):
+        az0_train = self.azimuth_list_batch[:,0,0]
+        el0_train = self.elevation_list_batch[:,0,0]
+        az0_test = self.azimuth_list_test[:,0,0]
+        el0_test = self.elevation_list_test[:,0,0]
+
+        def rotate_voxels(vox, az0, el0):
+            vox = tf.expand_dims(vox, axis = 4)
+            R = other.voxel.get_transform_matrix_tf(az0, el0)
+            return other.voxel.rotate_voxel(other.voxel.transformer_preprocess(vox), R)
+
+        def tile_voxels(x):
+            return tf.tile(
+                tf.expand_dims(x, axis = 1),
+                [1, self.FLAGS.max_episode_length, 1 ,1 ,1, 1]
+            )
+
+        self.rotated_vox_batch = rotate_voxels(self.vox_batch, az0_train, el0_train)
+        self.rotated_vox_test = rotate_voxels(self.vox_test, az0_test, el0_test)
         
-        self.vox_list_test = tf.tile(
-            tf.expand_dims(self.vox_test, axis=1),
-            [1, self.FLAGS.max_episode_length, 1 ,1 ,1]
-        ) #[BS, EP, V, V, V]
+        self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
+        self.rotated_vox_list_test = tile_voxels(self.rotated_vox_test)
         
     def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False,
                                scope_name='dqn_two_stream'):
@@ -274,29 +288,38 @@ class ActiveMVnet(object):
         ## create reconstruction loss
         ## --------------- train -------------------
 
-        ground_truth_voxels = self.vox_list_batch #rotate this
-       
-        if not self.FLAGS.use_coef:
-            recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(labels=ground_truth_voxels, 
-                logits=tf.squeeze(self.vox_list_logits, axis=-1), name='recon_loss_mat')
-        else:
-            ## add coefficient to postive samples
-            recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(targets=ground_truth_voxels, 
-                logits=tf.squeeze(self.vox_list_logits, axis=-1), pos_weight=self.FLAGS.loss_coef, name='recon_loss_mat')
-        self.recon_loss_list = tf.reduce_mean(recon_loss_mat, axis=[2, 3, 4], name='recon_loss_list') ## [BS, EP, V, V, V]
+        kwargs = {'pos_weight': self.FLAGS.loss_coef} if self.FLAGS.use_coef else {}
+        recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=self.rotated_vox_list_batch, 
+            logits=self.vox_list_logits,
+            name='recon_loss_mat',
+            **kwargs
+        )
+
+        self.recon_loss_list = tf.reduce_mean(
+            recon_loss_mat,
+            axis=[2, 3, 4, 5],
+            name='recon_loss_list'
+        ) ## [BS, EP, V, V, V, 1]
+
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
         ## --------------- train -------------------
         ## --------------- test  -------------------
-        if not self.FLAGS.use_coef:
-            recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
-                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
-        else:
-            ## add coefficient to postive samples
-            recon_loss_mat_test = tf.nn.weighted_cross_entropy_with_logits(targets=self.vox_list_test,
-                logits=tf.squeeze(self.vox_list_test_logits, axis=-1), pos_weight=self.FLAGS.loss_coef, name='recon_loss_mat_test')
-        recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.vox_list_test,
-            logits=tf.squeeze(self.vox_list_test_logits, axis=-1), name='recon_loss_mat_test')
-        self.recon_loss_list_test = tf.reduce_mean(recon_loss_mat_test, axis=[2,3,4], name='recon_loss_list_test')
+
+        kwargs = {'pos_weight': self.FLAGS.loss_coef} if self.FLAGS.use_coef else {}
+        recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=self.rotated_vox_list_test, 
+            logits=self.vox_list_test_logits,
+            name='recon_loss_mat',
+            **kwargs
+        )
+        
+        self.recon_loss_list_test = tf.reduce_mean(
+            recon_loss_mat_test,
+            axis=[2,3,4,5],
+            name='recon_loss_list_test'
+        )
+        
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
         ## --------------- test  -------------------
 
@@ -376,7 +399,7 @@ class ActiveMVnet(object):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
-            ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test']
+            ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test']
         ))
 
         burnin_list = [
@@ -476,11 +499,6 @@ class ActiveMVnet(object):
         feed_dict = self.construct_feed_dict(
             mvnet_input, include_vox = True, include_action = False, train_mode = is_training
         )
-        
-        #if np.random.uniform(low=0.0, high=1.0) > epsilon:
-        #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
-        #else:
-        #    return np.random.randint(low=0, high=FLAGS.action_num)
         return self.run_collection_with_fd(self.vox_prediction_collection, feed_dict)
 
     def run_step(self, mvnet_input, mode, is_training = True):

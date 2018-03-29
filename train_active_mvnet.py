@@ -307,6 +307,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             save_dict = {
                 'voxel_list': vox_final_list,
                 'vox_gt': vox_gt,
+                'vox_gtr': np.squeeze(pred_out.rotated_vox_test),
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
                 'RGB_list': mvnet_input.rgb
@@ -439,6 +440,10 @@ def dump_outputs(save_dict, train_i, i_idx):
 
     gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
     save_voxel(save_dict['vox_gt'], gt_save_name)
+
+    gtr_save_name = os.path.join(eval_dir, '{}_gtr.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gtr'], gtr_save_name)
+    
     for i in range(FLAGS.max_episode_length):
         pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
         save_voxel(save_dict['voxel_list'][i], pred_save_name)
