@@ -83,7 +83,8 @@ class ActiveMVnet(object):
 
         def rotate_voxels(vox, az0, el0):
             vox = tf.expand_dims(vox, axis = 4)
-            R = other.voxel.get_transform_matrix_tf(az0, el0)
+            #negative sign is important -- although i'm not sure how it works
+            R = other.voxel.get_transform_matrix_tf(-az0, el0)
             return other.voxel.rotate_voxel(other.voxel.transformer_preprocess(vox), R)
 
         def tile_voxels(x):

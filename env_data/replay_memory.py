@@ -124,7 +124,7 @@ class ReplayMemory():
             data = np.transpose(data, (0,2,1))
         return data
 
-    def read_vox(self, vox_name, transpose = True): 
+    def read_vox(self, vox_name, transpose = False):
         vox_model = self.read_bv(vox_name, transpose) 
         vox_factor = self.voxel_resolution * 1.0 / 128
         #vox_model_zoom = ndimg.zoom(vox_model, vox_factor, order=0) # nearest neighbor interpolation

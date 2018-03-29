@@ -50,5 +50,4 @@ class Unproject_tools:
             for (depth_, mask_, additional_, rot_) in zip(depths, masks, additionals, rots)
         ]
 
-        return tf.stack(unprojects, axis = 1)
-        
+        return tf.stack(unprojects, axis = 1) #4 x 4 x V x V x V x 7
