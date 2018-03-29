@@ -98,6 +98,7 @@ flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
 flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [default: 10]')
+flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [default: 10]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -301,8 +302,15 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         loss_list.append(pred_out.recon_loss_list_test)
 
         if FLAGS.if_save_eval:
-            save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
-                'RGB_list': RGB_temp_list}
+            save_dict = {
+                'voxel_list': vox_final_list,
+                'vox_gt': vox_gt,
+                'model_id': model_id,
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
+            }
+            #save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
+            #    'RGB_list': RGB_temp_list}
             eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
             if not os.path.exists(eval_dir):
                 os.mkdir(eval_dir)
