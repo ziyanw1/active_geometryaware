@@ -206,16 +206,8 @@ class ReplayMemory():
         vox_next[vox_next >= 0.5] = 1
         vox_next[vox_next < 0.5] = 0
 
-        def calu_IoU(a, b):
-            inter = a*b
-            sum_inter = np.sum(inter[:])
-            union = a + b
-            union[union > 0.5] = 1
-            sum_union = np.sum(union[:])
-            return sum_inter*1.0/sum_union
-
-        IoU_curr = calu_IoU(vox_curr, vox_gt)
-        IoU_next = calu_IoU(vox_next, vox_gt)
+        IoU_curr = self.calu_IoU(vox_curr, vox_gt)
+        IoU_next = self.calu_IoU(vox_next, vox_gt)
 
         return (IoU_next - IoU_curr)*100
     
@@ -229,15 +221,8 @@ class ReplayMemory():
 
     def calu_IG_reward(self, vox_curr, vox_next, vox_gt):
 
-        def calu_cross_entropy(a, b):
-            a[np.argwhere(b == 0)] = 1 - a[np.argwhere(b == 0)] 
-            a[np.argwhere(a == 0)] += 1e-5
-
-            cross_entropy = np.log(a)
-            return np.sum(cross_entropy[:])
-
-        cross_entropy_curr = calu_cross_entropy(vox_curr, vox_gt)
-        cross_entropy_next = calu_cross_entropy(vox_next, vox_gt)
+        cross_entropy_curr = self.calu_cross_entropy(vox_curr, vox_gt)
+        cross_entropy_next = self.calu_cross_entropy(vox_next, vox_gt)
 
         def sigmoid(a):
             return 1.0 / (1 + np.exp(-a))

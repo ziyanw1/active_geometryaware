@@ -296,8 +296,8 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         vox_final_list = np.squeeze(pred_out.vox_pred_test)
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
-        final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
-        #final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
+
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], pred_out.rotated_vox_test)
         
         eval_log(i_idx, pred_out, final_IoU)
         
