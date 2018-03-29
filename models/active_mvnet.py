@@ -22,7 +22,7 @@ class ActiveMVnet(object):
         self.FLAGS = FLAGS
         #self.senv = ShapeNetEnv(FLAGS)
         #self.replay_mem = ReplayMemory(FLAGS)
-        self.unproj_net = unproject_tools(FLAGS)
+        self.unproj_net = Unproject_tools(FLAGS)
 
         self.activation_fn = lrelu
         self.counter = tf.Variable(0, trainable=False, dtype=tf.int32)
