@@ -705,7 +705,7 @@ def pooling_aggregator(unproj_grids, channels, FLAGS, trainable=True, reuse=Fals
     #B x E x V x V X V x C
     
     outputs = []
-    base = tf.zeros_like(feats)[:,0] #B x V x V x V x C
+    base = -1000 * tf.ones_like(feats)[:,0] #B x V x V x V x C
     for i in range(FLAGS.max_episode_length):
         base = tf.maximum(feats[:,i], base)
         outputs.append(base)
