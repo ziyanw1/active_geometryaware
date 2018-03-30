@@ -10,6 +10,7 @@ from env_data.shapenet_env import ShapeNetEnv, trajectData
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 from util_unproj import Unproject_tools 
 import other
+from tensorflow import summary as summ
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
@@ -98,6 +99,9 @@ class ActiveMVnet(object):
         
         self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
         self.rotated_vox_list_test = tile_voxels(self.rotated_vox_test)
+
+        if self.FLAGS.debug_mode:
+            summ.histogram('ground_truth_voxels', self.rotated_vox_batch)
         
     def _create_dqn_two_stream(self, rgb, vox, trainable=True, if_bn=False, reuse=False,
                                scope_name='dqn_two_stream'):
@@ -228,6 +232,9 @@ class ActiveMVnet(object):
                 self.elevation_list_test
             )
 
+        if self.FLAGS.debug_mode:
+            summ.histogram('unprojections', self.unproj_grid_batch)
+
         ## TODO: collapse vox feature and do inference using unet3d
         with tf.device('/gpu:1'):
             ## --------------- train -------------------
@@ -275,7 +282,11 @@ class ActiveMVnet(object):
             
             self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
-        
+            
+        if self.FLAGS.debug_mode:
+            summ.histogram('aggregated', self.vox_feat_list)
+            summ.histogram('unet_out', self.vox_pred)
+            
         ## create active agent
         with tf.device('/gpu:0'):
             ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do not use episode end to train
@@ -421,10 +432,7 @@ class ActiveMVnet(object):
                 self.recon_loss/(self.FLAGS.max_episode_length*self.FLAGS.batch_size))
             self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
             self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
-
-            self.merge_train_list = [self.summary_learning_rate, self.summary_loss_recon_train,
-                self.summary_loss_reinforce_train, self.summary_reward_batch_train]
-            self.merged_train = tf.summary.merge(self.merge_train_list)
+            self.merged_train = tf.summary.merge_all()
 
     def _create_collections(self):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}

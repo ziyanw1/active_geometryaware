@@ -64,6 +64,7 @@ flags.DEFINE_string('CHECKPOINT_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
 flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [default: tmp]')
 flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
+flags.DEFINE_integer('restore_iter', 0, '')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
@@ -132,6 +133,7 @@ flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
+flags.DEFINE_boolean('debug_mode', False, '')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -518,7 +520,10 @@ if __name__ == "__main__":
     ##### log writing
     active_mv = ActiveMVnet(FLAGS)
     if FLAGS.restore:
-        restore(active_mv)
+        if FLAGS.restore_iter:
+            restore_from_iter(active_mv, FLAGS.restore_iter)
+        else:
+            restore(active_mv)
     train(active_mv)
     
     # z_list = []
