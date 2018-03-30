@@ -517,8 +517,8 @@ if __name__ == "__main__":
     #log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))
     ##### log writing
     active_mv = ActiveMVnet(FLAGS)
-    #if FLAGS.restore:
-    #    restore(ae)
+    if FLAGS.restore:
+        restore(active_mv)
     train(active_mv)
     
     # z_list = []
