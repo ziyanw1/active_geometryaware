@@ -294,8 +294,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         mvnet_input.put_voxel(vox_gt)
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
+        vox_gtr = np.copy(np.squeeze(pred_out.rotated_vox_test)
         vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
-        vox_final_list = np.squeeze(pred_out.vox_pred_test)
+        vox_final_list = np.copy(np.squeeze(pred_out.vox_pred_test))
         vox_final_[vox_final_ > 0.5] = 1
         vox_final_[vox_final_ <= 0.5] = 0
 
@@ -312,7 +313,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             save_dict = {
                 'voxel_list': vox_final_list,
                 'vox_gt': vox_gt,
-                'vox_gtr': np.squeeze(pred_out.rotated_vox_test),
+                'vox_gtr': vox_gtr,
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
                 'RGB_list': mvnet_input.rgb
