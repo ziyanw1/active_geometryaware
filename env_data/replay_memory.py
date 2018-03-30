@@ -201,17 +201,15 @@ class ReplayMemory():
         return reward_batch
 
     def calu_IoU_reward(self, vox_curr, vox_next, vox_gt):
-        vox_curr[vox_curr >= 0.5] = 1
-        vox_curr[vox_curr < 0.5] = 0
-        vox_next[vox_next >= 0.5] = 1
-        vox_next[vox_next < 0.5] = 0
-
         IoU_curr = self.calu_IoU(vox_curr, vox_gt)
         IoU_next = self.calu_IoU(vox_next, vox_gt)
 
         return (IoU_next - IoU_curr)*100
     
     def calu_IoU(self, a, b):
+        a = np.copy(a)
+        b = np.copy(b)
+        
         ## do threshold filtering as there are interpolated values
         aa = np.copy(a)
         bb = np.copy(b)
