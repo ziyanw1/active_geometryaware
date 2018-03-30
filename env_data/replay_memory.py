@@ -207,18 +207,17 @@ class ReplayMemory():
         return (IoU_next - IoU_curr)*100
     
     def calu_IoU(self, a, b):
-        a = np.copy(a)
-        b = np.copy(b)
-        
         ## do threshold filtering as there are interpolated values
-        a[a >= 0.5] = 1
-        a[a < 0.5] = 0
-        b[b >= 0.5] = 1
-        b[b < 0.5] = 0
+        aa = np.copy(a)
+        bb = np.copy(b)
+        aa[a >= 0.5] = 1
+        aa[a < 0.5] = 0
+        bb[b >= 0.5] = 1
+        bb[b < 0.5] = 0
 
-        inter = a*b
+        inter = aa*bb
         sum_inter = np.sum(inter[:])
-        union = a + b
+        union = aa + bb
         union[union > 0.5] = 1
         sum_union = np.sum(union[:])
         return sum_inter*1.0/sum_union
