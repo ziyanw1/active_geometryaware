@@ -305,10 +305,6 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
         vox_gtr = np.squeeze(pred_out.rotated_vox_test)
-        vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
-        vox_final_list = np.squeeze(pred_out.vox_pred_test)
-        vox_final_[vox_final_ > 0.5] = 1
-        vox_final_[vox_final_ <= 0.5] = 0
 
         PRINT_SUMMARY_STATISTICS = False
         if PRINT_SUMMARY_STATISTICS:
