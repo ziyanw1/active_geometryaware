@@ -157,26 +157,27 @@ def prepare_plot():
     plt.show(block=False)
 
 def save(ae, step, epoch, batch):
-    # save_path = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
-    log_dir = FLAGS.LOG_DIR
-    ckpt_dir = os.path.join(log_dir, FLAGS.CHECKPOINT_DIR)
-    if not os.path.exists(log_dir):
-        os.mkdir(log_dir)
+    ckpt_dir = get_restore_path()
+    if not os.path.exists(FLAGS.LOG_DIR):
+        os.mkdir(FLAGS.LOG_DIR)
     if not os.path.exists(ckpt_dir):
         os.mkdir(ckpt_dir)
     saved_checkpoint = ae.saver.save(ae.sess, \
         os.path.join(ckpt_dir, 'model.ckpt'), global_step=step)
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
+def get_restore_path():
+    return os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+
 def restore(ae):
-    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    restore_path = get_restore_path()
     latest_checkpoint = tf.train.latest_checkpoint(restore_path)
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
     ae.saver.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
 def restore_from_iter(ae, iter):
-    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    restore_path = get_restore_path()
     ckpt_path = os.path.join(restore_path, 'model.ckpt-{0}'.format(iter))
     print(tf_util.toYellow("----#-> Model restoring from: {} using {} iterations...".format(restore_path, iter)))
     ae.saver.restore(ae.sess, ckpt_path)
@@ -192,8 +193,11 @@ def train_log(i, out_stuff, t):
     mean_episode_reward = None
     reinforce_loss = out_stuff.loss_reinforce
     mean_episode_reward = np.mean(np.sum(out_stuff.reward_raw_batch, axis=1), axis=0)
-    log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(
-        i, recon_loss, mean_episode_reward, reinforce_loss, t))
+    log_string(
+        'Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}, {}, {}'.format(
+            i, recon_loss, mean_episode_reward, reinforce_loss, t[1]-t[0], t[2]-t[1], t[3]-t[2],
+        )
+    )
 
 def eval_log(i, out_stuff, iou):
     reward = np.sum(out_stuff.reward_raw_test)
@@ -232,13 +236,19 @@ def train(active_mv):
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
     for i_idx in range(FLAGS.max_iter):
+
+        t0 = time.time()
         rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
+        
+        t1 = time.time()
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
 
-        tic = time.time()
+        t2 = time.time()
         out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
 
-        train_log(i_idx, out_stuff, time.time()-tic)        
+        t3 = time.time()
+        train_log(i_idx, out_stuff, (t0, t1, t2, t3))
+        
         active_mv.train_writer.add_summary(out_stuff.merged_train, i_idx)
 
         if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
@@ -293,14 +303,17 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
 
         mvnet_input.put_voxel(vox_gt)
         pred_out = active_mv.predict_vox_list(mvnet_input)
-        
-        vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
-        vox_final_list = np.squeeze(pred_out.vox_pred_test)
-        vox_final_[vox_final_ > 0.5] = 1
-        vox_final_[vox_final_ <= 0.5] = 0
 
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], pred_out.rotated_vox_test)
+        PRINT_SUMMARY_STATISTICS = False
+        if PRINT_SUMMARY_STATISTICS:
+            lastpred = pred_out.vox_pred_test[-1]
+            print 'prediction statistics'        
+            print 'min', np.min(lastpred)
+            print 'max', np.max(lastpred)
+            print 'mean', np.mean(lastpred)
+            print 'std', np.std(lastpred)
         
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], pred_out.rotated_vox_test)
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
@@ -310,7 +323,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         if FLAGS.if_save_eval:
             
             save_dict = {
-                'voxel_list': vox_final_list,
+                'voxel_list': np.squeeze(pred_out.vox_pred_test),
                 'vox_gt': vox_gt,
                 'vox_gtr': np.squeeze(pred_out.rotated_vox_test),
                 'model_id': model_id,
