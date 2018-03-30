@@ -318,13 +318,20 @@ class ActiveMVnet(object):
         ## create reconstruction loss
         ## --------------- train -------------------
 
-        kwargs = {'pos_weight': self.FLAGS.loss_coef} if self.FLAGS.use_coef else {}
-        recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(
-            labels=self.rotated_vox_list_batch, 
-            logits=self.vox_list_logits,
-            name='recon_loss_mat',
-            **kwargs
-        )
+        if not self.FLAGS.use_coef:
+            recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(
+                labels=self.rotated_vox_list_batch, 
+                logits=self.vox_list_logits,
+                name='recon_loss_mat',
+            )
+        else:
+            recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(
+                targets=self.rotated_vox_list_batch, 
+                logits=self.vox_list_logits,
+                pos_weight=self.FLAGS.loss_coef,
+                name='recon_loss_mat',
+            )
+            
 
         self.recon_loss_list = tf.reduce_mean(
             recon_loss_mat,
@@ -336,13 +343,19 @@ class ActiveMVnet(object):
         ## --------------- train -------------------
         ## --------------- test  -------------------
 
-        kwargs = {'pos_weight': self.FLAGS.loss_coef} if self.FLAGS.use_coef else {}
-        recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
-            labels=self.rotated_vox_list_test, 
-            logits=self.vox_list_test_logits,
-            name='recon_loss_mat',
-            **kwargs
-        )
+        if not self.FLAGS.use_coef:
+            recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
+                labels=self.rotated_vox_list_test, 
+                logits=self.vox_list_test_logits,
+                name='recon_loss_mat',
+            )
+        else:
+            recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
+                targets=self.rotated_vox_list_test, 
+                logits=self.vox_list_test_logits,
+                pos_weight=self.FLAGS.loss_coef,
+                name='recon_loss_mat',
+            )
         
         self.recon_loss_list_test = tf.reduce_mean(
             recon_loss_mat_test,
