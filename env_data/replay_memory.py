@@ -207,9 +207,6 @@ class ReplayMemory():
         return (IoU_next - IoU_curr)*100
     
     def calu_IoU(self, a, b):
-        a = np.copy(a)
-        b = np.copy(b)
-        
         ## do threshold filtering as there are interpolated values
         aa = np.copy(a)
         bb = np.copy(b)
