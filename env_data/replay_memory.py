@@ -212,6 +212,12 @@ class ReplayMemory():
         return (IoU_next - IoU_curr)*100
     
     def calu_IoU(self, a, b):
+        ## do threshold filtering as there are interpolated values
+        a[a >= 0.5] = 1
+        a[a < 0.5] = 0
+        b[b >= 0.5] = 1
+        b[b < 0.5] = 0
+
         inter = a*b
         sum_inter = np.sum(inter[:])
         union = a + b
