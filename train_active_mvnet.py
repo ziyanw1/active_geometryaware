@@ -239,18 +239,18 @@ def train(active_mv):
     for i_idx in range(FLAGS.max_iter):
 
         t0 = time.time()
-        
-        replay_mem.disable_gbl()
+
         rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
-        replay_mem.enable_gbl()
-        
         t1 = time.time()
+
+        replay_mem.enable_gbl()
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
-
         t2 = time.time()
+        
         out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
-
+        replay_mem.disable_gbl()
         t3 = time.time()
+        
         train_log(i_idx, out_stuff, (t0, t1, t2, t3))
         
         active_mv.train_writer.add_summary(out_stuff.merged_train, i_idx)
