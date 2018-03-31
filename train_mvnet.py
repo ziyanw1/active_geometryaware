@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.misc as sm
 from utils import logger
+import other
 log_string = logger.log_string
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -53,6 +54,7 @@ flags.DEFINE_string('category', '03001627', 'category Index')
 flags.DEFINE_string('train_filename_prefix', 'train', '')
 flags.DEFINE_string('val_filename_prefix', 'train', '')
 flags.DEFINE_string('test_filename_prefix', 'train', '')
+flags.DEFINE_float('delta', 10.0, 'angle of each movement')
 #flags.DEFINE_string('LOG_DIR', '/newfoundland/rz1/log/summary', 'Log dir [default: log]')
 flags.DEFINE_string('LOG_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_string('data_path', './data/lmdb', 'data directory')
@@ -62,6 +64,7 @@ flags.DEFINE_string('CHECKPOINT_DIR', './log_agent', 'Log dir [default: log]')
 flags.DEFINE_integer('max_ckpt_keeps', 10, 'maximal keeps for ckpt file [default: 10]')
 flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [default: tmp]')
 flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
+flags.DEFINE_integer('restore_iter', 0, '')
 flags.DEFINE_string('ae_file', '', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
@@ -83,6 +86,8 @@ flags.DEFINE_string('unet_name', 'U_SAME', '')
 #options: U_SAME, OUTLINE
 flags.DEFINE_string('agg_name', 'GRU', '')
 #options: GRU, OUTLINE
+
+flags.DEFINE_integer('agg_channels', 16, 'agg_channels')
 
 flags.DEFINE_boolean('if_deconv', True, 'If add deconv output to generator aside from fc output')
 flags.DEFINE_boolean('if_constantLr', True, 'If use constant lr instead of decaying one')
@@ -128,6 +133,7 @@ flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
+flags.DEFINE_boolean('debug_mode', False, '')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -151,26 +157,27 @@ def prepare_plot():
     plt.show(block=False)
 
 def save(ae, step, epoch, batch):
-    # save_path = os.path.join(FLAGS.CHECKPOINT_DIR, FLAGS.task_name)
-    log_dir = FLAGS.LOG_DIR
-    ckpt_dir = os.path.join(log_dir, FLAGS.CHECKPOINT_DIR)
-    if not os.path.exists(log_dir):
-        os.mkdir(log_dir)
+    ckpt_dir = get_restore_path()
+    if not os.path.exists(FLAGS.LOG_DIR):
+        os.mkdir(FLAGS.LOG_DIR)
     if not os.path.exists(ckpt_dir):
         os.mkdir(ckpt_dir)
     saved_checkpoint = ae.saver.save(ae.sess, \
         os.path.join(ckpt_dir, 'model.ckpt'), global_step=step)
     log_string(tf_util.toBlue("-----> Model saved to file: %s; step = %d" % (saved_checkpoint, step)))
 
+def get_restore_path():
+    return os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+
 def restore(ae):
-    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    restore_path = get_restore_path()
     latest_checkpoint = tf.train.latest_checkpoint(restore_path)
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
     ae.saver.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
 def restore_from_iter(ae, iter):
-    restore_path = os.path.join(FLAGS.LOG_DIR, FLAGS.CHECKPOINT_DIR)
+    restore_path = get_restore_path()
     ckpt_path = os.path.join(restore_path, 'model.ckpt-{0}'.format(iter))
     print(tf_util.toYellow("----#-> Model restoring from: {} using {} iterations...".format(restore_path, iter)))
     ae.saver.restore(ae.sess, ckpt_path)
@@ -186,8 +193,11 @@ def train_log(i, out_stuff, t):
     mean_episode_reward = None
     reinforce_loss = out_stuff.loss_reinforce
     mean_episode_reward = np.mean(np.sum(out_stuff.reward_raw_batch, axis=1), axis=0)
-    log_string('Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}s'.format(
-        i, recon_loss, mean_episode_reward, reinforce_loss, t))
+    log_string(
+        'Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}, {}, {}'.format(
+            i, recon_loss, mean_episode_reward, reinforce_loss, t[1]-t[0], t[2]-t[1], t[3]-t[2],
+        )
+    )
 
 def eval_log(i, out_stuff, iou):
     reward = np.sum(out_stuff.reward_raw_test)
@@ -226,13 +236,19 @@ def train(active_mv):
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
     for i_idx in range(FLAGS.max_iter):
-        rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
+
+        t0 = time.time()
+        rollout_obj.go(i_idx, verbose = True, add_to_mem = True, mode = 'random')
+        
+        t1 = time.time()
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
 
-        tic = time.time()
+        t2 = time.time()
         out_stuff = active_mv.run_step(mvnet_input, mode='train_mv', is_training = True)
 
-        train_log(i_idx, out_stuff, time.time()-tic)        
+        t3 = time.time()
+        train_log(i_idx, out_stuff, (t0, t1, t2, t3))
+        
         active_mv.train_writer.add_summary(out_stuff.merged_train, i_idx)
 
         if i_idx % FLAGS.save_every_step == 0 and i_idx > 0:
@@ -279,7 +295,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
     for i_idx in range(test_episode_num):
 
-        mvnet_input = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
+        mvnet_input = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode = 'random')
 
         model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
@@ -288,13 +304,18 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         mvnet_input.put_voxel(vox_gt)
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
-        vox_final_ = np.copy(np.squeeze(pred_out.vox_pred_test[-1, ...]))
-        vox_final_list = np.squeeze(pred_out.vox_pred_test)
-        vox_final_[vox_final_ > 0.5] = 1
-        vox_final_[vox_final_ <= 0.5] = 0
-        final_IoU = replay_mem.calu_IoU(vox_final_, np.squeeze(vox_gt))
-        #final_loss = replay_mem.calu_cross_entropy(vox_final_list[-1, ...], vox_gt)
+        vox_gtr = np.squeeze(pred_out.rotated_vox_test)
+
+        PRINT_SUMMARY_STATISTICS = False
+        if PRINT_SUMMARY_STATISTICS:
+            lastpred = pred_out.vox_pred_test[-1]
+            print 'prediction statistics'        
+            print 'min', np.min(lastpred)
+            print 'max', np.max(lastpred)
+            print 'mean', np.mean(lastpred)
+            print 'std', np.std(lastpred)
         
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], pred_out.rotated_vox_test)
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
@@ -302,25 +323,18 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         loss_list.append(pred_out.recon_loss_list_test)
 
         if FLAGS.if_save_eval:
+            
             save_dict = {
-                'voxel_list': vox_final_list,
+                'voxel_list': np.squeeze(pred_out.vox_pred_test),
                 'vox_gt': vox_gt,
+                'vox_gtr': vox_gtr,
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
                 'RGB_list': mvnet_input.rgb
             }
-            #save_dict = {'voxel_list': vox_final_list, 'vox_gt': vox_gt, 'model_id': model_id, 'states': traj_state,
-            #    'RGB_list': RGB_temp_list}
-            eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
-            if not os.path.exists(eval_dir):
-                os.mkdir(eval_dir)
-            eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
-            if not os.path.exists(eval_dir):
-                os.mkdir(eval_dir)
 
-            mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
-            sio.savemat(mat_save_name, save_dict)
-
+            dump_outputs(save_dict, train_i, i_idx)
+            
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
     loss_list = np.asarray(loss_list)
@@ -432,6 +446,44 @@ def burn_in(senv, replay_mem):
                 replay_mem.append(temp_traj)
                 break
 
+def dump_outputs(save_dict, train_i, i_idx):
+    eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+                
+    eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+
+    mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
+    sio.savemat(mat_save_name, save_dict)
+
+    gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gt'], gt_save_name)
+
+    gtr_save_name = os.path.join(eval_dir, '{}_gtr.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gtr'], gtr_save_name)
+    
+    for i in range(FLAGS.max_episode_length):
+        pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
+        save_voxel(save_dict['voxel_list'][i], pred_save_name)
+
+        img_save_name = os.path.join(eval_dir, '{}_rgb{}.png'.format(i_idx, i))
+        other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
+    
+def save_voxel(vox, pth):
+    THRESHOLD = 0.5
+    vox = np.transpose(vox, (2, 1, 0))
+    binvox_obj = other.binvox_rw.Voxels(
+        vox > THRESHOLD,
+        dims = [FLAGS.voxel_resolution]*3,
+        translate = [0.0, 0.0, 0.0],
+        scale = 1.0,
+        axis_order = 'xyz'
+    )
+    with open(pth, 'wb') as f:
+        binvox_obj.write(f)
+        
 if __name__ == "__main__":
     #MODEL = importlib.import_module(FLAGS.model_file) # import network module
     #MODEL_FILE = os.path.join(BASE_DIR, 'models', FLAGS.model_file+'.py')
@@ -482,8 +534,11 @@ if __name__ == "__main__":
     #log_string(tf_util.toYellow('<<<<'+FLAGS.task_name+'>>>> '+str(tf.flags.FLAGS.__flags)))
     ##### log writing
     active_mv = ActiveMVnet(FLAGS)
-    #if FLAGS.restore:
-    #    restore(ae)
+    if FLAGS.restore:
+        if FLAGS.restore_iter:
+            restore_from_iter(active_mv, FLAGS.restore_iter)
+        else:
+            restore(active_mv)
     train(active_mv)
     
     # z_list = []

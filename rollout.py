@@ -21,7 +21,7 @@ class Rollout(object):
             model_id = self.env.current_model
         )
     
-    def go(self, i_idx, verbose = True, add_to_mem = True):
+    def go(self, i_idx, verbose = True, add_to_mem = True, mode = 'active'):
         ''' does 1 rollout, returns mvnet_input'''
 
         state, model_id = self.env.reset(True)
@@ -33,7 +33,10 @@ class Rollout(object):
         for e_idx in range(1, self.FLAGS.max_episode_length):
 
             tic = time.time()
-            agent_action = self.agent.select_action(mvnet_input, e_idx-1)
+            if mode == 'active':
+                agent_action = self.agent.select_action(mvnet_input, e_idx-1)
+            elif mode == 'random':
+                agent_action = np.random.randint(self.env.action_space_n)
             actions.append(agent_action)
             state, next_state, done, model_id = self.env.step(actions[-1])
             
