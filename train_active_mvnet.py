@@ -228,7 +228,7 @@ def train(active_mv):
 
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
-        for i in range(FLAGS.burn_in_iter):
+        for i in xrange(FLAGS.burn_in_iter):
             mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
@@ -236,7 +236,7 @@ def train(active_mv):
 
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
-    for i_idx in range(FLAGS.max_iter):
+    for i_idx in xrange(FLAGS.max_iter):
 
         t0 = time.time()
 
@@ -297,7 +297,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     IoU_list = []
     loss_list = []
         
-    for i_idx in range(test_episode_num):
+    for i_idx in xrange(test_episode_num):
 
         mvnet_input = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
 
@@ -357,7 +357,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
 
 #     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
 #     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
-#     for i_idx in range(test_episode_num):
+#     for i_idx in xrange(test_episode_num):
 #         state, model_id = senv.reset(True)
 #         senv.current_model = '53180e91cd6651ab76e29c9c43bc7aa'
 #         senv.current_model = '41d9bd662687cf503ca22f17e86bab24'
@@ -373,7 +373,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
 #         vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
 #         vox_temp = np.squeeze(vox_temp_list[0, ...])
 #         ## run simulations and get memories
-#         for e_idx in range(FLAGS.max_episode_length-1):
+#         for e_idx in xrange(FLAGS.max_episode_length-1):
 #             agent_action = agent.select_action(RGB_temp_list[e_idx], vox_temp, is_training=False)
 #             actions.append(agent_action)
 #             state, next_state, done, model_id = senv.step(actions[-1])
@@ -415,7 +415,7 @@ def burn_in(senv, replay_mem):
     K_single = np.asarray([[420.0, 0.0, 112.0], [0.0, 420.0, 112.0], [0.0, 0.0, 1]])
     K_list = np.tile(K_single[None, None, ...], (1, FLAGS.max_episode_length, 1, 1))  
     tic = time.time()
-    for i_idx in range(FLAGS.burn_in_length):
+    for i_idx in xrange(FLAGS.burn_in_length):
         if i_idx % 10 == 0 and i_idx != 0:
             toc = time.time()
             log_string('Burning in {}/{} sequences, time taken: {}s'.format(i_idx, FLAGS.burn_in_length, toc-tic))
@@ -432,7 +432,7 @@ def burn_in(senv, replay_mem):
         #vox_temp_list = replay_mem.get_vox_pred(RGB_temp_list, R_list, K_list, 0) 
         #vox_temp = np.squeeze(vox_temp_list[0, ...])
         ## run simulations and get memories
-        for e_idx in range(FLAGS.max_episode_length-1):
+        for e_idx in xrange(FLAGS.max_episode_length-1):
             actions.append(np.random.randint(FLAGS.action_num))
             state, next_state, done, model_id = senv.step(actions[-1])
             RGB_temp_list[e_idx+1, ...], _ = replay_mem.read_png_to_uint8(next_state[0], next_state[1], model_id)
@@ -468,7 +468,7 @@ def dump_outputs(save_dict, train_i, i_idx):
     gtr_save_name = os.path.join(eval_dir, '{}_gtr.binvox'.format(i_idx))
     save_voxel(save_dict['vox_gtr'], gtr_save_name)
     
-    for i in range(FLAGS.max_episode_length):
+    for i in xrange(FLAGS.max_episode_length):
         pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
         save_voxel(save_dict['voxel_list'][i], pred_save_name)
 
