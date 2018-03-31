@@ -134,6 +134,7 @@ flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
+flags.DEFINE_boolean('GBL_thread', False, '')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point

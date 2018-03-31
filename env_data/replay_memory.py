@@ -67,7 +67,8 @@ class ReplayMemory():
         self.get_vlsm()
         #self.get_vlsm_mini()
 
-        self.start_GBL_threads(FLAGS.batch_size)
+        if self.FLAGS.GBL_thread:
+            self.start_GBL_threads(FLAGS.batch_size)
 
     def get_vlsm(self):
         #SAMPLE_DIR = os.path.join('data', 'shapenet_sample')
@@ -328,13 +329,15 @@ class ReplayMemory():
         return min(self.count, self.mem_length)
 
     def enable_gbl(self):
-        self.enabled = True
-        self.stopped = False
+        if self.FLAGS.GBL_thread:
+            self.enabled = True
+            self.stopped = False
 
     def disable_gbl(self):
-        self.enabled = False
-        while not self.stopped:
-            sleep(0.1)
+        if self.FLAGS.GBL_thread:
+            self.enabled = False
+            while not self.stopped:
+                sleep(0.01)
     
     def start_GBL_threads(self, bs):
         self.max_buffer_size = 32
@@ -354,15 +357,15 @@ class ReplayMemory():
         while 1:
             if not self.enabled:
                 self.stopped = True                
-                sleep(0.1)
+                sleep(0.01)
                 continue
             
             if self.gblq.qsize() > self.max_buffer_size:
-                sleep(0.1)
+                sleep(0.01)
                 continue
 
             if self.upper_bound() <= 0:
-                sleep(0.1)
+                sleep(0.01)
                 continue #wait for burnin to complete
 
             item = self._get_batch_list(self.gblbs)
@@ -397,8 +400,11 @@ class ReplayMemory():
         return mvinputs
 
     def get_batch_list(self, batch_size = 4):
-        assert batch_size == self.gblbs
-        return self.gblq.get()
+        if self.FLAGS.GBL_thread:
+            assert batch_size == self.gblbs
+            return self.gblq.get()
+        else:
+            return self._get_batch_list(batch_size)
     
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma
