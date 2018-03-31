@@ -238,7 +238,10 @@ def train(active_mv):
     for i_idx in range(FLAGS.max_iter):
 
         t0 = time.time()
+        
+        replay_mem.disable_gbl()
         rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
+        replay_mem.enable_gbl()
         
         t1 = time.time()
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)

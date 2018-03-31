@@ -12,6 +12,9 @@ from lsm.utils import Bunch, get_session_config
 from lsm.models import grid_nets, im_nets, model_vlsm
 from lsm.ops import conv_rnns
 from models.active_mvnet import MVInputs, SingleInput, SingleInputFactory
+from threading import Thread
+from Queue import Queue
+from time import sleep
 
 sys.path.append(os.path.join('utils'))
 from util import downsample
@@ -64,6 +67,8 @@ class ReplayMemory():
         self.get_vlsm()
         #self.get_vlsm_mini()
 
+        self.start_GBL_threads(FLAGS.batch_size)
+
     def get_vlsm(self):
         #SAMPLE_DIR = os.path.join('data', 'shapenet_sample')
         #im_dir = os.path.join(SAMPLE_DIR, 'renders')
@@ -108,6 +113,7 @@ class ReplayMemory():
     #    saver.restore(self.sess, os.path.join(log_dir, ckpt))
 
     def append(self, data_list):
+
         # data_list: azim/elev list(0:max_episode_length), model_id
         if self.count < self.mem_length:
             self.mem_list.append(data_list)
@@ -317,13 +323,56 @@ class ReplayMemory():
 
     #     #return RGB_batch, invZ_batch, mask_batch, sn_batch, vox_gt_batch, azim_batch, elev_batch, actions_batch
     #     return RGB_batch, vox_curr_batch, reward_batch, action_response_batch
+
+    def upper_bound(self):
+        return min(self.count, self.mem_length)
+
+    def enable_gbl(self):
+        self.enabled = True
+        self.stopped = False
+
+    def disable_gbl(self):
+        self.enabled = False
+        while not self.stopped:
+            sleep(0.1)
     
-    def get_batch_list(self, batch_size=4):
+    def start_GBL_threads(self, bs):
+        self.max_buffer_size = 32
+        self.gblbs = bs
+        self.gblq = Queue()
+        
+        self.enabled = True
+        self.stopped = False
+        
+        num_threads = 1
+
+        for i in range(num_threads):
+            th = Thread(target = self.loop_gbl)
+            th.start()
+
+    def loop_gbl(self):
+        while 1:
+            if not self.enabled:
+                self.stopped = True                
+                sleep(0.1)
+                continue
+            
+            if self.gblq.qsize() > self.max_buffer_size:
+                sleep(0.1)
+                continue
+
+            if self.upper_bound() <= 0:
+                sleep(0.1)
+                continue #wait for burnin to complete
+
+            item = self._get_batch_list(self.gblbs)
+            self.gblq.put(item)
+        
+    def _get_batch_list(self, batch_size=4):
         mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
 
         for b_idx in range(batch_size):
-            upper_bound = min(self.count, self.mem_length)
-            rand_idx = np.random.randint(0, upper_bound)
+            rand_idx = np.random.randint(0, self.upper_bound())
             data_ = self.mem_list[rand_idx]
 
             azimuths = np.asarray(data_.states[0])
@@ -347,6 +396,10 @@ class ReplayMemory():
 
         return mvinputs
 
+    def get_batch_list(self, batch_size = 4):
+        assert batch_size == self.gblbs
+        return self.gblq.get()
+    
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma
 
