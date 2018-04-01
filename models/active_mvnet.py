@@ -123,7 +123,7 @@ class ActiveMVnet(object):
             else:
                 weights_regularizer = None
             
-            with slim.arg_scope([slim.fully_connected],
+            with slim.arg_scope([slim.fully_connected, slim.conv2d, slim.conv3d],
                     activation_fn=self.activation_fn,
                     trainable=trainable,
                     normalizer_fn=batch_normalizer_gen,
