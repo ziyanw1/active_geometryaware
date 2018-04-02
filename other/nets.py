@@ -606,7 +606,7 @@ def unet_same(vox_feat, channels, FLAGS, trainable=True, if_bn=False, reuse=Fals
         else:
             weights_regularizer = None
 
-        with slim.arg_scope([slim.fully_connected],
+        with slim.arg_scope([slim.fully_connected, slim.conv3d, slim.conv3d_transpose],
                 activation_fn=activation_fn,
                 trainable=trainable,
                 normalizer_fn=batch_normalizer_gen,
@@ -672,7 +672,7 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
             weights_regularizer = None
 
         ## create fuser
-        with slim.arg_scope([slim.fully_connected],
+        with slim.arg_scope([slim.fully_connected, slim.conv3d],
                 activation_fn=activation_fn,
                 trainable=trainable,
                 normalizer_fn=batch_normalizer_gen,
