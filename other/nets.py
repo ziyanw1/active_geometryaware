@@ -3,6 +3,7 @@ import tensorflow.contrib.slim as slim
 import constants as const
 import tfpy
 import voxel
+import sys
 
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 
@@ -639,7 +640,8 @@ def unet_same(vox_feat, channels, FLAGS, trainable=True, if_bn=False, reuse=Fals
 def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, reuse=False,
                    is_training = True, activation_fn = tf.nn.relu, scope_name='aggr_64'):
 
-    unproj_grids = collapse_dims(unproj_grids)
+    #unproj_grids_collap = collapse_dims(unproj_grids)
+    unproj_grids_list = tf.unstack(unproj_grids, axis=1)
     
     with tf.variable_scope(scope_name) as scope:
         if reuse:
@@ -665,17 +667,23 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
                 normalizer_params=batch_norm_params_gen,
                 weights_regularizer=weights_regularizer):
 
-            net_unproj = slim.conv3d(unproj_grids, 16, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
+            #net_unproj = slim.conv3d(unproj_grids_collap, 16, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
+            net_unproj_first = slim.conv3d(unproj_grids_list[0], 16, kernel_size=3, stride=1, padding='SAME' ,
+                scope='aggr_conv1_split')
+            conv3d_reuse = lambda x: slim.conv3d(x, 16, kernel_size=3, stride=1, padding='SAME', reuse=tf.AUTO_REUSE,
+                scope='aggr_conv1_split')
+            net_unproj_follow = tf.unstack(tf.map_fn(conv3d_reuse, tf.stack(unproj_grids_list[1:])), axis=0)
             #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv2')
             #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv3')
 
             ## the input for convgru should be in shape of [bs, episode_len, vox_reso, vox_reso, vox_reso, ch]
             #net_unproj = uncollapse_dims(net_unproj, FLAGS.batch_size, FLAGS.max_episode_length)
-            net_unproj = uncollapse_dims(
-                net_unproj,
-                unproj_grids.get_shape().as_list()[0]/FLAGS.max_episode_length, 
-                FLAGS.max_episode_length
-            )
+            #net_unproj = uncollapse_dims(
+            #    net_unproj,
+            #    unproj_grids.get_shape().as_list()[0]/FLAGS.max_episode_length, 
+            #    FLAGS.max_episode_length
+            #)
+            net_unproj = tf.stack([net_unproj_first]+net_unproj_follow, axis=1)
             
             net_pool_grid, _ = convgru(net_unproj, filters=channels) ## should be shape of [bs, len, vox_reso x 3, ch] 
 
