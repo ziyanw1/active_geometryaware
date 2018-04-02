@@ -159,8 +159,11 @@ class ActiveMVnet(object):
                 is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
             )
         elif self.FLAGS.unet_name == 'U_VALID':
+            #can't run summaries for test
+            #debug = int(vox_feat.get_shape().as_list()[0]) > self.FLAGS.max_episode_length
+            debug = False
             with tf.variable_scope(scope_name, reuse = reuse):
-                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, return_logits = True)
+                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, return_logits = True, debug = debug)
         elif self.FLAGS.unet_name == 'OUTLINE':
             return vox_feat, tf.zeros_like(vox_feat)
         else:
@@ -257,7 +260,7 @@ class ActiveMVnet(object):
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
             )
-            
+
             self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             
             ## --------------- train -------------------

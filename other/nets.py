@@ -5,6 +5,7 @@ import tfpy
 import voxel
 
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
+from tensorflow import summary as summ
 
 def encoder_decoder(inputs, pred_dim, blocks, base_channels=16, aux_input=None, bn = True):
     feat_stack = []
@@ -471,7 +472,7 @@ def voxel_encoder(inputs, aux, reuse):
 
 
 def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
-                    freeze_decoder = False, d0 = 16, return_logits = False):
+                    freeze_decoder = False, d0 = 16, return_logits = False, debug = False):
 
     input_size = list(inputs.get_shape())[1]
     if input_size == 128:
@@ -519,11 +520,16 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
             paddings = ['SAME'] * 3 + ['VALID']            
 
         net = inputs
+
+        if debug:
+            summ.histogram('voxel_net_3d_input', net)
+
         skipcons = [net]
         for i, (dim, ksize, stride, padding) in enumerate(zip(dims, ksizes, strides, paddings)):
             net = slim.conv3d(net, dim, ksize, stride=stride, padding=padding)
-
             skipcons.append(net)
+            if debug:
+                summ.histogram('voxel_net_3d_enc_%d' % i, net)
         
         if aux is not None:
             aux = tf.reshape(aux, (-1, 1, 1, 1, aux_dim))
@@ -554,17 +560,25 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
             net = slim.conv3d_transpose(
                 net, chan, ksize, stride=stride, padding=padding, trainable=decoder_trainable
             )
-
             #now concatenate on the skip-connection
             net = tf.concat([net, skipcons.pop()], axis = 4)
 
+            if debug:
+                summ.histogram('voxel_net_3d_dec_%d' % i, net)
+                
         #one last 1x1 conv to get the right number of output channels
         net = slim.conv3d(
             net, 1, 1, 1, padding='SAME', activation_fn = None,
             normalizer_fn = None, trainable = decoder_trainable
         )
+        if debug:
+            summ.histogram('voxel_net_3d_logits', net)
+        
 
     net_ = tf.nn.sigmoid(net)
+    if debug:
+        summ.histogram('voxel_net_3d_output', net_)
+    
 
     if return_logits:
         return net_, net
@@ -688,27 +702,43 @@ def pooling_aggregator(unproj_grids, channels, FLAGS, trainable=True, reuse=Fals
     unproj_grids = collapse_dims(unproj_grids)
         
     with tf.variable_scope(scope_name, reuse = reuse) as scope:
-        with slim.arg_scope(
-                [slim.conv3d],
-                trainable=trainable,
-                normalizer_fn=slim.batch_norm,
-                normalizer_params={'is_training': is_training, 'decay': FLAGS.bn_decay}):
 
-            #a simple 1x1 convolution
-            feats = slim.conv3d(unproj_grids, channels, activation_fn = None, kernel_size=1, stride=1)
+        #a simple 1x1 convolution -- no BN
+        feats = slim.conv3d(
+            unproj_grids, channels, activation_fn = None, kernel_size=1, stride=1, trainable = trainable
+        )
 
-    feats = uncollapse_dims(
-        feats,
-        feats.get_shape().as_list()[0]/FLAGS.max_episode_length,         
-        FLAGS.max_episode_length
-    )
-    #B x E x V x V X V x C
+    l = FLAGS.max_episode_length
+    uncollapse = lambda x: uncollapse_dims(x, x.get_shape().as_list()[0]/l, l)
+            
+    feats = uncollapse(feats)
+    unproj_grids = uncollapse(unproj_grids)
     
-    outputs = []
-    base = -1000 * tf.ones_like(feats)[:,0] #B x V x V x V x C
-    for i in range(FLAGS.max_episode_length):
-        base = tf.maximum(feats[:,i], base)
-        outputs.append(base)
+    #B x E x V x V X V x C
 
-    #in effect, outputs[i] is the max pool of views [0,i)
-    return tf.stack(outputs, axis = 1)
+    def fn_pool(feats, pool_fn, id_, givei = False):
+        outputs = []
+        base = id_
+        for i in range(FLAGS.max_episode_length):
+            if givei:
+                base = pool_fn(feats[:,i], base, i)
+            else:
+                base = pool_fn(feats[:,i], base)
+            outputs.append(base)
+        return tf.stack(outputs, axis = 1)
+
+    # return tf.concat([
+    #     fn_pool(unproj_grids, tf.maximum, unproj_grids[:,0]),
+    #     fn_pool(unproj_grids, tf.minimum, unproj_grids[:,0]),
+    #     fn_pool(feats, tf.maximum, feats[:,0])
+    # ], axis = -1)
+
+    #max may be a bad idea
+    #return fn_pool(feats, tf.maximum, feats[:,0])
+
+    return fn_pool(
+        feats,
+        lambda x, prev, i: i/(i+1.0) * prev + 1/(i+1.0) * x,
+        feats[:,0],
+        givei = True
+    )
