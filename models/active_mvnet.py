@@ -251,17 +251,38 @@ class ActiveMVnet(object):
                 scope_name='aggr_64'
             )
 
-            self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
-
-            self.vox_pred, vox_logits = self._create_unet3d(
-                self.vox_feat,
+            #self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
+            
+            vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
+            vox_pred_first, vox_logits_first = self._create_unet3d(
+                vox_feat_unstack[0],
                 channels=self.FLAGS.agg_channels,
                 trainable=True,
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
             )
 
-            self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            unet_3d_reuse = lambda x: self._create_unet3d(
+                x,
+                channels=self.FLAGS.agg_channels,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='unet_3d'
+            )
+            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
+            self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
+            self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
+
+            #self.vox_pred, vox_logits = self._create_unet3d(
+            #    self.vox_feat,
+            #    channels=self.FLAGS.agg_channels,
+            #    trainable=True,
+            #    if_bn=self.FLAGS.if_bn,
+            #    scope_name='unet_3d'
+            #)
+
+            #self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             
             ## --------------- train -------------------
             ## --------------- test  -------------------
@@ -273,17 +294,24 @@ class ActiveMVnet(object):
                 scope_name='aggr_64'
             )
 
-            self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
+            #self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
+            vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
+
+            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_test_unstack), 
+                dtype=(tf.float32, tf.float32))
+
+            self.vox_pred_test = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
+            self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
             
-            self.vox_pred_test, vox_test_logits = self._create_unet3d(
-                self.vox_feat_test,
-                channels=self.FLAGS.agg_channels,
-                if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE,
-                scope_name='unet_3d'
-            )
+            #self.vox_pred_test, vox_test_logits = self._create_unet3d(
+            #    self.vox_feat_test,
+            #    channels=self.FLAGS.agg_channels,
+            #    if_bn=self.FLAGS.if_bn,
+            #    reuse=tf.AUTO_REUSE,
+            #    scope_name='unet_3d'
+            #)
             
-            self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
+            #self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
             
         if self.FLAGS.debug_mode:
