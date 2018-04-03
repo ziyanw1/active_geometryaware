@@ -299,7 +299,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
     for i_idx in xrange(test_episode_num):
 
-        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, is_train=False)
         stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
         if stop_idx.size == 0:
             pred_idx = -1

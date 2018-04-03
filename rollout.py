@@ -21,10 +21,10 @@ class Rollout(object):
             model_id = self.env.current_model
         )
     
-    def go(self, i_idx, verbose = True, add_to_mem = True, mode = 'active'):
+    def go(self, i_idx, verbose = True, add_to_mem = True, mode = 'active', is_train=True):
         ''' does 1 rollout, returns mvnet_input'''
 
-        state, model_id = self.env.reset(True)
+        state, model_id = self.env.reset(is_train)
         actions = []
         mvnet_input = MVInputs(self.FLAGS, batch_size = 1)
         
