@@ -59,4 +59,4 @@ class Rollout(object):
                 self.last_trajectory = traj_state                    
                 break
         
-        return mvnet_input
+        return mvnet_input, actions

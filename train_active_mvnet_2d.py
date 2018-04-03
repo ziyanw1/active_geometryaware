@@ -299,7 +299,12 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
     for i_idx in xrange(test_episode_num):
 
-        mvnet_input = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False)
+        stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
+        if stop_idx.size == 0:
+            pred_idx = -1
+        else:
+            pred_idx = stop_idx[0, 0] + 1
 
         model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
@@ -319,7 +324,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
         
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], pred_out.rotated_vox_test)
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[pred_idx], pred_out.rotated_vox_test)
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
