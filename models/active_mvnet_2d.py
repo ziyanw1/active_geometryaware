@@ -96,6 +96,9 @@ class ActiveMVnet2D(object):
 
         self.rotated_vox_batch = rotate_voxels(self.vox_batch, az0_train, el0_train)
         self.rotated_vox_test = rotate_voxels(self.vox_test, az0_test, el0_test)
+
+        self.vox_list_batch = tile_voxels(tf.expand_dims(self.vox_batch, axis=-1))
+        self.vox_list_test = tile_voxels(tf.expand_dims(self.vox_test, axis=-1))
         
         self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
         self.rotated_vox_list_test = tile_voxels(self.rotated_vox_test)
@@ -371,7 +374,7 @@ class ActiveMVnet2D(object):
             self.vox_pred_test, self.vox_logits_test = tf.map_fn(decoder_reuse, tf.stack(aggr_feat_list_test_),
                 dtype=(tf.float32, tf.float32))
             self.vox_pred_test = tf.stack(tf.unstack(self.vox_pred_test), axis=1)
-            self.vox_logits_test = tf.stack(tf.unstack(self.vox_logits_test), axis=1)
+            self.vox_list_test_logits = tf.stack(tf.unstack(self.vox_logits_test), axis=1)
             ## --------------- test  -------------------
 
             ## TODO: create active agent with two stream policy network
@@ -406,9 +409,9 @@ class ActiveMVnet2D(object):
             self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.aggr_feat_test_use,
                 if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
             ## --------------- test  -------------------
-            ## TODO: debug
-            sys.exit()
-            ## debug
+            ### TODO: debug
+            #sys.exit()
+            ### debug
     
     def _create_loss(self):
         ## create reconstruction loss
@@ -416,13 +419,13 @@ class ActiveMVnet2D(object):
 
         if not self.FLAGS.use_coef:
             recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=self.rotated_vox_list_batch, 
+                labels=self.vox_list_batch, 
                 logits=self.vox_list_logits,
                 name='recon_loss_mat',
             )
         else:
             recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(
-                targets=self.rotated_vox_list_batch, 
+                targets=self.vox_list_batch, 
                 logits=self.vox_list_logits,
                 pos_weight=self.FLAGS.loss_coef,
                 name='recon_loss_mat',
@@ -441,13 +444,13 @@ class ActiveMVnet2D(object):
 
         if not self.FLAGS.use_coef:
             recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=self.rotated_vox_list_test, 
+                labels=self.vox_list_test, 
                 logits=self.vox_list_test_logits,
                 name='recon_loss_mat',
             )
         else:
             recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
-                targets=self.rotated_vox_list_test, 
+                targets=self.vox_list_test, 
                 logits=self.vox_list_test_logits,
                 pos_weight=self.FLAGS.loss_coef,
                 name='recon_loss_mat',
@@ -510,7 +513,9 @@ class ActiveMVnet2D(object):
     def _create_optimizer(self):
        
         aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
-        unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
+        enc_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='encoder')
+        dec_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='decoder')
+        fuse_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='fuse')
         dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
 
         if self.FLAGS.if_constantLr:
@@ -531,8 +536,8 @@ class ActiveMVnet2D(object):
         #so that we have always have something to optimize
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
         
-        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
-        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
+        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=fuse_var+aggr_var+enc_var+dec_var+[z])  
+        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=fuse_var+aggr_var+dqn_var)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
@@ -551,7 +556,6 @@ class ActiveMVnet2D(object):
         ))
 
         burnin_list = [
-            'unproj_grid_batch',
             'opt_recon',
             'recon_loss',
             'recon_loss_list',
