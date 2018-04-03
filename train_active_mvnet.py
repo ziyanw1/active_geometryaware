@@ -304,7 +304,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         if stop_idx.size == 0:
             pred_idx = -1
         else:
-            pred_idx = stop_idx[0, 0] + 1
+            pred_idx = stop_idx[0, 0]
 
         model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
