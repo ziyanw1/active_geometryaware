@@ -373,7 +373,7 @@ class ActiveMVnet2D(object):
             aggr_feat_list_test_ = tf.unstack(tf.reshape(self.aggr_feat_list_test, reshape_size_test), axis=1)
             self.vox_pred_test, self.vox_logits_test = tf.map_fn(decoder_reuse, tf.stack(aggr_feat_list_test_),
                 dtype=(tf.float32, tf.float32))
-            self.vox_pred_test = tf.stack(tf.unstack(self.vox_pred_test), axis=1)
+            self.vox_pred_test = tf.squeeze(tf.stack(tf.unstack(self.vox_pred_test), axis=1))
             self.vox_list_test_logits = tf.stack(tf.unstack(self.vox_logits_test), axis=1)
             ## --------------- test  -------------------
 

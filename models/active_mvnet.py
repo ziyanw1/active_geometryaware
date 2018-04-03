@@ -300,7 +300,7 @@ class ActiveMVnet(object):
             vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_test_unstack), 
                 dtype=(tf.float32, tf.float32))
 
-            self.vox_pred_test = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
+            self.vox_pred_test = tf.squeeze(tf.stack(tf.unstack(vox_pred_test_all), axis=1))
             self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
             
             #self.vox_pred_test, vox_test_logits = self._create_unet3d(
@@ -331,6 +331,12 @@ class ActiveMVnet(object):
             self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
             self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
                 trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+
+            #self.RGB_use_batch_list = tf.unstack(self.RGB_list_batch_norm_use, axis=1)
+            #self.vox_feat_use_list = tf.unstack(self.vox_feat_list_use, axis=1)
+            #action_prob_first, _ = self._create_dqn_two_stream(self.RGB_use_batch_list[0], self.vox_feat_use_list[0],
+            #    trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+            #dqn_reuse = lambda x, y: self._create_dqn_two_stream(x, 
             ## --------------- train -------------------
             ## --------------- test  -------------------
             self.RGB_list_test_norm_use, _ = tf.split(self.RGB_list_test_norm,
