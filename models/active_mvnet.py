@@ -446,7 +446,8 @@ class ActiveMVnet(object):
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
         ## reward_batch node should not back propagate
-        self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
+        #self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
+        self.reward_batch = collapse_dims(self.reward_batch_list)
         self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):

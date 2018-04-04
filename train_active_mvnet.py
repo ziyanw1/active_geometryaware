@@ -259,7 +259,10 @@ def train(active_mv):
             save(active_mv, i_idx, i_idx, i_idx)
             
         if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj)
+            print('Evaluating active policy')
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj, mode='active')
+            print('Evaluating random policy')
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj, mode='random')
         
         # #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         # ## TODO: 
@@ -289,17 +292,18 @@ def train(active_mv):
         #tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
         #agent.train_writer.add_summary(merge_summary, i_idx)
 
-def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
+def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode='active'):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
     rewards_list = []
     IoU_list = []
     loss_list = []
-        
-    for i_idx in xrange(test_episode_num):
 
-        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, is_train=False)
+    for i_idx in xrange(test_episode_num):
+        
+        ## use active policy
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode=mode, is_train=False)
         stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
         if stop_idx.size == 0:
             pred_idx = -1
@@ -329,7 +333,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
-        loss_list.append(pred_out.recon_loss_list_test)
+        loss_list.append(np.mean(pred_out.recon_loss_list_test[:, 0:pred_idx, ...]))
 
         if FLAGS.if_save_eval:
             
@@ -342,7 +346,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
                 'RGB_list': mvnet_input.rgb
             }
 
-            dump_outputs(save_dict, train_i, i_idx)
+            dump_outputs(save_dict, train_i, i_idx, mode)
             
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
@@ -352,9 +356,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     eval_IoU_mean = np.mean(IoU_list)
     eval_loss_mean = np.mean(loss_list)
     
-    tf_util.save_scalar(train_i, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
-    tf_util.save_scalar(train_i, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
-    tf_util.save_scalar(train_i, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_reward_{}'.format(mode), eval_r_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_IoU_{}'.format(mode), eval_IoU_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_loss_{}'.format(mode), eval_loss_mean, active_mv.train_writer)
 
 def test(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     senv = ShapeNetEnv(FLAGS)
@@ -521,7 +525,7 @@ def burn_in(senv, replay_mem):
                 replay_mem.append(temp_traj)
                 break
 
-def dump_outputs(save_dict, train_i, i_idx):
+def dump_outputs(save_dict, train_i, i_idx, mode=''):
     eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
     if not os.path.exists(eval_dir):
         os.mkdir(eval_dir)
@@ -530,7 +534,7 @@ def dump_outputs(save_dict, train_i, i_idx):
     if not os.path.exists(eval_dir):
         os.mkdir(eval_dir)
 
-    mat_save_name = os.path.join(eval_dir, '{}.mat'.format(i_idx))
+    mat_save_name = os.path.join(eval_dir, '{}_{}.mat'.format(i_idx, mode))
     sio.savemat(mat_save_name, save_dict)
 
     gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
@@ -540,10 +544,10 @@ def dump_outputs(save_dict, train_i, i_idx):
     save_voxel(save_dict['vox_gtr'], gtr_save_name)
     
     for i in xrange(FLAGS.max_episode_length):
-        pred_save_name = os.path.join(eval_dir, '{}_pred{}.binvox'.format(i_idx, i))
+        pred_save_name = os.path.join(eval_dir, '{}_pred{}_{}.binvox'.format(i_idx, i, mode))
         save_voxel(save_dict['voxel_list'][i], pred_save_name)
 
-        img_save_name = os.path.join(eval_dir, '{}_rgb{}.png'.format(i_idx, i))
+        img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
         other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
     
 def save_voxel(vox, pth):

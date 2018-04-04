@@ -24,7 +24,7 @@ class Rollout(object):
     def go(self, i_idx, verbose = True, add_to_mem = True, mode = 'active', is_train=True):
         ''' does 1 rollout, returns mvnet_input'''
 
-        state, model_id = self.env.reset(is_train)
+        state, model_id = self.env.reset(is_train, i_idx)
         actions = []
         mvnet_input = MVInputs(self.FLAGS, batch_size = 1)
         
@@ -36,7 +36,7 @@ class Rollout(object):
             if mode == 'active':
                 agent_action = self.agent.select_action(mvnet_input, e_idx-1)
             elif mode == 'random':
-                probs = [0.5/8]*8+[0.5]
+                probs = [0.8/8]*8+[0.2]
                 agent_action = np.random.choice(self.env.action_space_n, p=probs)
             actions.append(agent_action)
             state, next_state, done, model_id = self.env.step(actions[-1])

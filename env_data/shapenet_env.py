@@ -56,21 +56,26 @@ class ShapeNetEnv():
         self.prev_azims = []
         self.prev_elevs = []
         self.test_count = 0
+        self.test_azims = np.random.choice(azim_all, size=(self.test_len, 1))
+        self.test_elevs = np.random.choice(elev_all, size=(self.test_len, 1))
         self.action_space_n = 9
 
-    def reset(self, is_training):
+    def reset(self, is_training, test_idx=0):
         self.step_count = 0
         self.prev_azims = []
         self.prev_elevs = []
         if is_training:
             rand_idx = np.random.randint(0, self.train_len) 
             self.current_model = self.trainval_list[rand_idx]
+            self.current_azim = np.random.choice(azim_all)
+            self.current_elev = np.random.choice(elev_all)
         else:
-            rand_idx = np.random.randint(0, self.test_len)
-            self.current_model = self.test_list[rand_idx]
+            #rand_idx = np.random.randint(0, self.test_len)
+            t_idx = min(test_idx, self.test_len)
+            self.current_model = self.test_list[t_idx]
+            self.current_azim = self.test_azims[t_idx]
+            self.current_elev = self.test_elevs[t_idx]
 
-        self.current_azim = np.random.choice(azim_all)
-        self.current_elev = np.random.choice(elev_all)
 
         return [[self.current_azim], [self.current_elev]], self.current_model
 
