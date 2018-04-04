@@ -356,6 +356,72 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     tf_util.save_scalar(train_i, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
     tf_util.save_scalar(train_i, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 
+def test(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
+    senv = ShapeNetEnv(FLAGS)
+
+    #epsilon = FLAGS.init_eps
+    rewards_list = []
+    IoU_list = []
+    loss_list = []
+        
+    for i_idx in xrange(test_episode_num):
+
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, is_train=False, test_idx=i_idx)
+        stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
+        if stop_idx.size == 0:
+            pred_idx = -1
+        else:
+            pred_idx = stop_idx[0, 0]
+
+        model_id = rollout_obj.env.current_model
+        voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
+        vox_gt = replay_mem.read_vox(voxel_name)
+
+        mvnet_input.put_voxel(vox_gt)
+        pred_out = active_mv.predict_vox_list(mvnet_input)
+        
+        vox_gtr = np.squeeze(pred_out.rotated_vox_test)
+
+        PRINT_SUMMARY_STATISTICS = False
+        if PRINT_SUMMARY_STATISTICS:
+            lastpred = pred_out.vox_pred_test[-1]
+            print 'prediction statistics'        
+            print 'min', np.min(lastpred)
+            print 'max', np.max(lastpred)
+            print 'mean', np.mean(lastpred)
+            print 'std', np.std(lastpred)
+        
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[pred_idx], vox_gtr)
+        eval_log(i_idx, pred_out, final_IoU)
+        
+        rewards_list.append(np.sum(pred_out.reward_raw_test))
+        IoU_list.append(final_IoU)
+        loss_list.append(pred_out.recon_loss_list_test)
+
+        if FLAGS.if_save_eval:
+            
+            save_dict = {
+                'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'vox_gt': vox_gt,
+                'vox_gtr': vox_gtr,
+                'model_id': model_id,
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
+            }
+
+            dump_outputs(save_dict, train_i, i_idx)
+            
+    rewards_list = np.asarray(rewards_list)
+    IoU_list = np.asarray(IoU_list)
+    loss_list = np.asarray(loss_list)
+
+    eval_r_mean = np.mean(rewards_list)
+    eval_IoU_mean = np.mean(IoU_list)
+    eval_loss_mean = np.mean(loss_list)
+    
+    tf_util.save_scalar(train_i, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
 # def test(agent, test_episode_num, model_iter):
 #     senv = ShapeNetEnv(FLAGS)
 #     replay_mem = ReplayMemory(FLAGS)

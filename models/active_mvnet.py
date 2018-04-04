@@ -376,7 +376,8 @@ class ActiveMVnet(object):
             name='recon_loss_list'
         ) ## [BS, EP, V, V, V, 1]
 
-        self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
+        ## use last view for reconstruction
+        self.recon_loss = tf.reduce_sum(self.recon_loss_list[:, -1, ...], axis=0, name='recon_loss')
         ## --------------- train -------------------
         ## --------------- test  -------------------
 
@@ -473,6 +474,7 @@ class ActiveMVnet(object):
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
         
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
+        #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
         self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
 
     def _create_summary(self):
