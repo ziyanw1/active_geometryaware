@@ -582,7 +582,9 @@ class ActiveMVnet(object):
 
             a_idx = np.argmax(action_prob == a_response)
         else:
-            a_idx = np.argmax(action_prob)
+            a_response = np.random.choice(action_prob, p=action_prob)
+
+            a_idx = np.argmax(action_prob == a_response)
         return a_idx
 
     def predict_vox_list(self, mvnet_input, is_training = False):
