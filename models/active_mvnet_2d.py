@@ -438,8 +438,7 @@ class ActiveMVnet2D(object):
             name='recon_loss_list'
         ) ## [BS, EP, V, V, V, 1]
         
-        ## only optimize on last step
-        self.recon_loss = tf.reduce_sum(self.recon_loss_list[:, -1, ...], axis=0, name='recon_loss')
+        self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
         ## --------------- train -------------------
         ## --------------- test  -------------------
 
