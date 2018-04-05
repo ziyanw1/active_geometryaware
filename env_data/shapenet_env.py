@@ -73,8 +73,6 @@ class ShapeNetEnv():
             #rand_idx = np.random.randint(0, self.test_len)
             t_idx = min(test_idx, self.test_len)
             self.current_model = self.test_list[t_idx]
-            self.current_azim = self.test_azims[t_idx]
-            self.current_elev = self.test_elevs[t_idx]
 
 
         return [[self.current_azim], [self.current_elev]], self.current_model

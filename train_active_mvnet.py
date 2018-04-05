@@ -99,6 +99,7 @@ flags.DEFINE_boolean("if_transform", False, "if use two transform layers")
 flags.DEFINE_float('reg_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean("if_vae", False, "if use VAE instead of vanilla AE")
 flags.DEFINE_boolean("if_l2Reg", False, "if use l2 regularizor for the generator")
+flags.DEFINE_boolean("if_dqn_l2Reg", True, "if use l2 regularizor for the policy network")
 flags.DEFINE_float('vae_weight', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
@@ -304,11 +305,11 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
         
         ## use active policy
         mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode=mode, is_train=False)
-        stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
-        if stop_idx.size == 0:
-            pred_idx = -1
-        else:
-            pred_idx = stop_idx[0, 0]
+        #stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
+        #if stop_idx.size == 0:
+        #    pred_idx = -1
+        #else:
+        #    pred_idx = stop_idx[0, 0]
 
         model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
@@ -328,12 +329,12 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
         
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[pred_idx], vox_gtr)
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
-        loss_list.append(np.mean(pred_out.recon_loss_list_test[:, 0:pred_idx, ...]))
+        loss_list.append(np.mean(pred_out.recon_loss_list_test))
 
         if FLAGS.if_save_eval:
             

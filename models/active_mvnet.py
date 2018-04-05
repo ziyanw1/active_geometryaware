@@ -11,6 +11,7 @@ from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims
 from util_unproj import Unproject_tools 
 import other
 from tensorflow import summary as summ
+from tensorflow.python import debug as tf_debug
 
 def lrelu(x, leak=0.2, name='lrelu'):
     with tf.variable_scope(name):
@@ -46,6 +47,9 @@ class ActiveMVnet(object):
         config.allow_soft_placement = True
         config.log_device_placement = False
         self.sess = tf.Session(config=config)
+        ### for debug
+        #self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
+        ### for debug
         self.sess.run(tf.global_variables_initializer())
 
         self.train_writer = tf.summary.FileWriter(os.path.join(FLAGS.LOG_DIR, 'train'), self.sess.graph)
@@ -118,7 +122,7 @@ class ActiveMVnet(object):
                 batch_normalizer_gen = None
                 batch_norm_params_gen = None
 
-            if self.FLAGS.if_l2Reg:
+            if self.FLAGS.if_dqn_l2Reg:
                 weights_regularizer = slim.l2_regularizer(1e-5)
             else:
                 weights_regularizer = None
@@ -139,14 +143,14 @@ class ActiveMVnet(object):
 
                 net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='SAME', scope='vox_conv1')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='SAME', scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
-                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
-                net_vox = slim.conv3d(net_vox, 256, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='SAME', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='SAME', scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='SAME', scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
-                net_feat = slim.fully_connected(net_feat, 2048, scope='fc6')
-                net_feat = slim.fully_connected(net_feat, 4096, scope='fc7')
+                net_feat = slim.fully_connected(net_feat, 1024, scope='fc6')
+                net_feat = slim.fully_connected(net_feat, 1024, scope='fc7')
                 logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, scope='fc8')
 
                 return tf.nn.softmax(logits), logits
@@ -322,23 +326,38 @@ class ActiveMVnet(object):
         with tf.device('/gpu:0'):
             ## extract input from list [BS, EP, ...] to [BS, EP-1, ...] as we do not use episode end to train
             ## --------------- train -------------------
+            ### TODO:BATCH NORM ON TIME SEQ
             self.RGB_list_batch_norm_use, _ = tf.split(self.RGB_list_batch_norm, 
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
             self.vox_feat_list_use, _ = tf.split(self.vox_feat_list, 
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
+            #RGB_list_norm = tf.unstack(self.RGB_list_batch_norm, axis=1)
+            #vox_feat_list_ = tf.unstack(self.vox_feat_list, axis=1)
             ## collapse input for easy inference instead of inference multiple times
             self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm_use)
             self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
+            
             self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
                 trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+            ### TODO:BATCH NORM ON TIME SEQ
 
-            #self.RGB_use_batch_list = tf.unstack(self.RGB_list_batch_norm_use, axis=1)
-            #self.vox_feat_use_list = tf.unstack(self.vox_feat_list_use, axis=1)
-            #action_prob_first, _ = self._create_dqn_two_stream(self.RGB_use_batch_list[0], self.vox_feat_use_list[0],
+            ### TODO:BATCH NORM ON EACH TIME STEP
+            #action_prob_first, _ = self._create_dqn_two_stream(RGB_list_norm[0], vox_feat_list_[0],
             #    trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
-            #dqn_reuse = lambda x, y: self._create_dqn_two_stream(x, 
+
+            #policy_net_reuse = lambda (x, y): self._create_dqn_two_stream(x, y, trainable=True, if_bn=self.FLAGS.if_bn,
+            #    reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+
+            #action_prob_follow, _ = tf.map_fn(policy_net_reuse, (tf.stack(RGB_list_norm[1:-1]),
+            #    tf.stack(vox_feat_list_[1:-1])), dtype=(tf.float32, tf.float32)) 
+
+            #self.action_prob = tf.stack([action_prob_first]+tf.unstack(action_prob_follow), axis=1)
+            #self.action_prob = collapse_dims(self.action_prob)
+            ### TODO:BATCH NORM ON EACH TIME STEP
+
             ## --------------- train -------------------
             ## --------------- test  -------------------
+            ### TODO:BATCH NORM ON TIME SEQ
             self.RGB_list_test_norm_use, _ = tf.split(self.RGB_list_test_norm,
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
             self.vox_feat_list_test_use, _ = tf.split(self.vox_feat_list_test,
@@ -348,6 +367,15 @@ class ActiveMVnet(object):
             self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test_use)
             self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
                 if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+            ### TODO:BATCH NORM ON TIME SEQ
+            
+            ### TODO:BATCH NORM ON EACH TIME STEP
+            #RGB_list_test_norm_ = tf.unstack(self.RGB_list_test_norm, axis=1)
+            #vox_feat_list_test_ = tf.unstack(self.vox_feat_list_test, axis=1)
+            #self.action_prob_test, _ = tf.map_fn(policy_net_reuse, (tf.stack(RGB_list_test_norm_[0:-1]),
+            #    tf.stack(vox_feat_list_test_[0:-1])), dtype=(tf.float32, tf.float32))
+            ### TODO:BATCH NORM ON EACH TIME STEP
+
             ## --------------- test  -------------------
 
     
@@ -377,6 +405,7 @@ class ActiveMVnet(object):
         ) ## [BS, EP, V, V, V, 1]
 
         ## use last view for reconstruction
+        #self.recon_loss = tf.reduce_sum(self.recon_loss_list[:, -1, ...], axis=0, name='recon_loss')
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
         ## --------------- train -------------------
         ## --------------- test  -------------------
@@ -446,9 +475,9 @@ class ActiveMVnet(object):
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
         ## reward_batch node should not back propagate
-        #self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
-        self.reward_batch = collapse_dims(self.reward_batch_list)
-        self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
+        self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
+        #self.reward_batch = collapse_dims(self.reward_batch_list)
+        self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action+1e-10)*self.reward_batch, name='reinforce_loss')
 
     def _create_optimizer(self):
        
@@ -476,7 +505,7 @@ class ActiveMVnet(object):
         
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
-        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
+        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=dqn_var)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
@@ -577,12 +606,14 @@ class ActiveMVnet(object):
         #else:
         #    return np.random.randint(low=0, high=FLAGS.action_num)
         stuff = self.sess.run([self.action_prob_test], feed_dict=feed_dict)
-        action_prob = stuff[0][idx]
+        action_prob = np.squeeze(np.copy(stuff[0]))[idx]
         if is_training:
+            print(action_prob)
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
         else:
+            print(action_prob)
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
