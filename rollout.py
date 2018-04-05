@@ -36,7 +36,7 @@ class Rollout(object):
             if mode == 'active':
                 agent_action = self.agent.select_action(mvnet_input, e_idx-1)
             elif mode == 'random':
-                probs = [0.8/8]*8+[0.2]
+                probs = [1.0/8]*8
                 agent_action = np.random.choice(self.env.action_space_n, p=probs)
             actions.append(agent_action)
             state, next_state, done, model_id = self.env.step(actions[-1])

@@ -58,7 +58,7 @@ class ShapeNetEnv():
         self.test_count = 0
         self.test_azims = np.random.choice(azim_all, size=(self.test_len, 1))
         self.test_elevs = np.random.choice(elev_all, size=(self.test_len, 1))
-        self.action_space_n = 9
+        self.action_space_n = 8
 
     def reset(self, is_training, test_idx=0):
         self.step_count = 0
@@ -108,8 +108,8 @@ class ShapeNetEnv():
         elif action == 7:
             self.current_azim = np.mod(self.current_azim - DELTA, 360)
             self.current_elev = np.maximum(self.current_elev - DELTA, MIN_ELEV)
-        elif action == 8:
-            pass ## camera don't move
+        #elif action == 8:
+        #    pass ## camera don't move
         else:
             raise Exception, 'bad action'
 
