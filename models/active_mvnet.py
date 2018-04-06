@@ -146,11 +146,11 @@ class ActiveMVnet(object):
                 net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
-                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv1')
-                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv3')
-                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv4')
-                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv5')
+                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', scope='vox_conv1')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv2')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='VALID', scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='VALID', scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
