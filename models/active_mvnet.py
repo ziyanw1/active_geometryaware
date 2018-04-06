@@ -70,6 +70,7 @@ class ActiveMVnet(object):
         self.azimuth_list_batch = self.train_provider.azimuth_ph
         self.elevation_list_batch = self.train_provider.elevation_ph
         self.action_list_batch = self.train_provider.action_ph
+        self.penalty_list_batch = self.train_provider.penalty_ph
         self.vox_batch = self.train_provider.vox_ph
         
         self.RGB_list_test = self.test_provider.rgb_ph
@@ -78,6 +79,7 @@ class ActiveMVnet(object):
         self.azimuth_list_test = self.test_provider.azimuth_ph
         self.elevation_list_test = self.test_provider.elevation_ph
         self.action_list_test = self.test_provider.action_ph
+        self.penalty_list_test = self.test_provider.penalty_ph
         self.vox_test = self.test_provider.vox_ph
 
     def _create_ground_truth_voxels(self):
@@ -118,6 +120,8 @@ class ActiveMVnet(object):
                 batch_normalizer_gen = slim.batch_norm
                 batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
                 #batch_norm_params_gen = {'is_training': True, 'decay': self.FLAGS.bn_decay}
+                #batch_normalizer_gen = None
+                #batch_norm_params_gen = None
             else:
                 #self._print_arch('=== NOT Using BN for GENERATOR!')
                 batch_normalizer_gen = None
@@ -437,9 +441,11 @@ class ActiveMVnet(object):
         ## --------------- test  -------------------
 
 
-        def process_loss_to_reward(loss_list_batch, gamma, max_episode_len, r_name=None, reward_weight=10):
+        def process_loss_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
+            reward_weight=10, penalty_weight=0.0005):
             
             reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
+            penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
 
@@ -448,7 +454,7 @@ class ActiveMVnet(object):
             ## decayed sum of future possible rewards
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
-                    update_r = reward_raw_batch[:, j] * (gamma**(j-i))
+                    update_r = reward_raw_batch[:, j] * (gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
                     update_r = update_r + reward_batch_list[:, i] 
                     update_r = tf.expand_dims(update_r, axis=1)
                     ## update reward batch list
@@ -459,18 +465,22 @@ class ActiveMVnet(object):
 
         self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
             self.recon_loss_list,
+            self.penalty_list_batch,
             self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1,
             r_name=None,
-            reward_weight=self.FLAGS.reward_weight
+            reward_weight=self.FLAGS.reward_weight,
+            penalty_weight=self.FLAGS.penalty_weight
         )
         
         self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
             self.recon_loss_list_test,
+            self.penalty_list_test,
             self.FLAGS.gamma,
             self.FLAGS.max_episode_length-1,
             r_name='test',
-            reward_weight=self.FLAGS.reward_weight
+            reward_weight=self.FLAGS.reward_weight,
+            penalty_weight=self.FLAGS.penalty_weight
         )
             
         ## create reinforce loss
@@ -564,7 +574,7 @@ class ActiveMVnet(object):
         self.train_collection = dict2obj(dct_from_keys(train_list))
         self.train_mvnet_collection = dict2obj(dct_from_keys(train_mvnet_list))
             
-    def get_placeholders(self, include_vox, include_action, train_mode):
+    def get_placeholders(self, include_vox, include_action, include_penalty, train_mode):
         
         placeholders = lambda: None
         if train_mode:
@@ -578,6 +588,8 @@ class ActiveMVnet(object):
                 placeholders.action = self.action_list_batch
             if include_vox:
                 placeholders.vox = self.vox_batch
+            if include_penalty:
+                placeholders.penalty = self.penalty_list_batch
 
         else:
             placeholders.rgb = self.RGB_list_test
@@ -590,12 +602,14 @@ class ActiveMVnet(object):
                 placeholders.action = self.action_list_test
             if include_vox:
                 placeholders.vox = self.vox_test
+            if include_penalty:
+                placeholders.penalty = self.penalty_list_test
 
         return placeholders
 
-    def construct_feed_dict(self, mvnet_inputs, include_vox, include_action, train_mode = True):
+    def construct_feed_dict(self, mvnet_inputs, include_vox, include_action, include_penalty, train_mode = True):
 
-        placeholders = self.get_placeholders(include_vox, include_action, train_mode = train_mode)
+        placeholders = self.get_placeholders(include_vox, include_action, include_penalty, train_mode = train_mode)
 
         feed_dict = {self.is_training: train_mode}
 
@@ -606,6 +620,9 @@ class ActiveMVnet(object):
         if include_action:
             assert mvnet_inputs.action is not None
             keys.append('action')
+        if include_penalty:
+            assert mvnet_inputs.penalty is not None
+            keys.append('penalty')
             
         for key in keys:
             feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
@@ -621,7 +638,7 @@ class ActiveMVnet(object):
     def select_action(self, mvnet_input, idx, is_training = False):
         
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = False, include_action = False, train_mode = is_training
+            mvnet_input, include_vox = False, include_action = False, include_penalty = False, train_mode = is_training
         )
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
@@ -645,14 +662,14 @@ class ActiveMVnet(object):
     def predict_vox_list(self, mvnet_input, is_training = False):
 
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = True, include_action = False, train_mode = is_training
+            mvnet_input, include_vox = True, include_action = False, include_penalty = False, train_mode = is_training
         )
         return self.run_collection_with_fd(self.vox_prediction_collection, feed_dict)
 
     def run_step(self, mvnet_input, mode, is_training = True):
         '''mode is one of ['burnin', 'train'] '''
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = True, include_action = True, train_mode = is_training
+            mvnet_input, include_vox = True, include_action = True, include_penalty = True, train_mode = is_training
         )
 
         if mode == 'burnin':
@@ -677,7 +694,7 @@ class SingleInputFactory(object):
     def __init__(self, mem):
         self.mem = mem
 
-    def make(self, azimuth, elevation, model_id, action = None):
+    def make(self, azimuth, elevation, model_id, action = None, penalty=np.zeros((1,))):
         rgb, mask = self.mem.read_png_to_uint8(azimuth, elevation, model_id)
         invz = self.mem.read_invZ(azimuth, elevation, model_id)
         mask = (mask > 0.5).astype(np.float32) * (invz >= 1e-6)
@@ -686,12 +703,13 @@ class SingleInputFactory(object):
         mask = mask[..., None]
         azimuth = azimuth[..., None]
         elevation = elevation[..., None]
+        penalty = penalty[..., None]
         
-        single_input = SingleInput(rgb, invz, mask, azimuth, elevation, action = action)
+        single_input = SingleInput(rgb, invz, mask, azimuth, elevation, action = action, penalty = penalty)
         return single_input
     
 class SingleInput(object): 
-    def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None):
+    def __init__(self, rgb, invz, mask, azimuth, elevation, vox = None, action = None, penalty=0):
         self.rgb = rgb
         self.invz = invz
         self.mask = mask
@@ -699,6 +717,7 @@ class SingleInput(object):
         self.elevation = elevation
         self.vox = vox
         self.action = action
+        self.penalty = penalty
 
 class ShapeProvider(object):
     def __init__(self, FLAGS, batch_size = None):
@@ -714,6 +733,7 @@ class ShapeProvider(object):
         self.azimuth_shape = self.make_shape((1,))
         self.elevation_shape = self.make_shape((1,))
         self.action_shape = (self.BS, FLAGS.max_episode_length-1, 1)
+        self.penalty_shape = self.make_shape((1,))
 
         self.dtypes = {
             'rgb': np.float32,
@@ -723,19 +743,20 @@ class ShapeProvider(object):
             'azimuth': np.float32,
             'elevation': np.float32,
             'action': np.int32,
+            'penalty': np.float32,
         }
 
     def make_np_zeros(self, dest = None, suffix = '_np'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action', 'penalty']:
             arr = np.zeros(getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(dest, key+suffix, arr)
 
     def make_tf_ph(self, dest = None, suffix = '_ph'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action', 'penalty']:
             ph = tf.placeholder(shape = getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(self, key+suffix, ph)
         
@@ -759,6 +780,8 @@ class MVInputs(object):
         keys = ['rgb', 'invz', 'mask', 'azimuth', 'elevation']
         if hasattr(single_mvinput, 'action') and getattr(single_mvinput, 'action') is not None:
             keys.append('action')
+        if hasattr(single_mvinput, 'penalty') and getattr(single_mvinput, 'penalty') is not None:
+            keys.append('penalty')
             
         for key in keys:
             arr = getattr(self, key)

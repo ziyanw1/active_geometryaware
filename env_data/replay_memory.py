@@ -64,7 +64,7 @@ class ReplayMemory():
         #ckpt = 'mvnet-100000'
         #self.restorer = tf.train.Saver(var_list=vars_restore)
         #self.restorer.restore(self.sess, os.path.join(log_dir, ckpt))
-        self.get_vlsm()
+        #self.get_vlsm()
         #self.get_vlsm_mini()
 
         if self.FLAGS.GBL_thread:
@@ -381,6 +381,7 @@ class ReplayMemory():
             azimuths = np.asarray(data_.states[0])
             elevations = np.asarray(data_.states[1])
             actions = np.asarray(np.expand_dims(data_.actions, axis=1))
+            penalties = np.abs(azimuths-azimuths[0]) + np.abs(elevations-elevations[0])
 
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
@@ -393,8 +394,9 @@ class ReplayMemory():
                 azimuth = azimuths[l_idx]
                 elevation = elevations[l_idx]
                 action = actions[l_idx] if (l_idx < self.max_episode_length-1) else None
+                penalty = penalties[l_idx]
 
-                single_input = self.input_factory.make(azimuth, elevation, model_id, action = action)
+                single_input = self.input_factory.make(azimuth, elevation, model_id, action = action, penalty = penalty)
                 mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
 
         return mvinputs
