@@ -156,7 +156,7 @@ class ActiveMVnet(object):
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc6')
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc7')
-                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
+                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, scope='fc8')
 
                 return tf.nn.softmax(logits), logits
     
@@ -279,6 +279,14 @@ class ActiveMVnet(object):
                 reuse=tf.AUTO_REUSE,
                 scope_name='unet_3d'
             )
+            unet_3d_reuse_test = lambda x: self._create_unet3d(
+                x,
+                channels=self.FLAGS.agg_channels,
+                trainable=False,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='unet_3d'
+            )
             vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
             self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
             self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
@@ -297,6 +305,7 @@ class ActiveMVnet(object):
             ## --------------- test  -------------------
             self.vox_feat_list_test = self._create_aggregator64(
                 self.unproj_grid_test,
+                trainable=False,
                 channels=self.FLAGS.agg_channels,
                 if_bn=self.FLAGS.if_bn,
                 reuse=tf.AUTO_REUSE,
@@ -306,10 +315,11 @@ class ActiveMVnet(object):
             #self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
             vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
 
-            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_test_unstack), 
+            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
                 dtype=(tf.float32, tf.float32))
 
-            self.vox_pred_test = tf.squeeze(tf.stack(tf.unstack(vox_pred_test_all), axis=1))
+            self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
+            self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
             self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
             
             #self.vox_pred_test, vox_test_logits = self._create_unet3d(
@@ -373,7 +383,7 @@ class ActiveMVnet(object):
             self.RGB_use_test = collapse_dims(self.RGB_list_test_norm_use)
             self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test_use)
             self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
-                if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+                trainable=False, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
             ## TODO:BATCH NORM ON TIME SEQ
             
             ### TODO:BATCH NORM ON EACH TIME STEP
@@ -414,6 +424,30 @@ class ActiveMVnet(object):
         ## use last view for reconstruction
         #self.recon_loss = tf.reduce_sum(self.recon_loss_list[:, -1, ...], axis=0, name='recon_loss')
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
+
+        ## TODO: compute IoU
+        def compute_IoU(vox_list_pred, vox_list_gt, thres=0.5, iou_name=None):
+            vox_collapse_pred = collapse_dims(vox_list_pred)
+            vox_collapse_gt = collapse_dims(vox_list_gt)
+
+            def compute_IoU_single(vox_pred, vox_gt, thres):
+                pred_ = tf.greater_equal(vox_pred, 0.5*tf.ones_like(vox_pred, dtype=tf.float32))
+                gt_ = tf.greater_equal(vox_gt, 0.5*tf.ones_like(vox_gt, dtype=tf.float32))
+
+                inter = tf.cast(tf.logical_and(pred_, gt_), dtype=tf.float32)
+                union = tf.cast(tf.logical_or(pred_, gt_), dtype=tf.float32)
+
+                return tf.div(tf.reduce_sum(inter, axis=[0,1,2]), tf.reduce_sum(union, axis=[0,1,2]))
+
+            iou = lambda (x,y): compute_IoU_single(x, y, thres=thres)
+            
+            iou_collapse = tf.map_fn(iou, (vox_collapse_pred, vox_collapse_gt), dtype=(tf.float32))
+
+            return iou_collapse
+        
+        IoU_collapse = compute_IoU(self.vox_pred, self.rotated_vox_list_batch, thres=self.FLAGS.iou_thres)
+        self.IoU_list_batch = uncollapse_dims(IoU_collapse, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+
         ## --------------- train -------------------
         ## --------------- test  -------------------
 
@@ -438,6 +472,9 @@ class ActiveMVnet(object):
         )
         
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
+        IoU_collapse_test = compute_IoU(self.vox_pred_test_, self.rotated_vox_list_test, thres=self.FLAGS.iou_thres,
+            iou_name='test')
+        self.IoU_list_test = uncollapse_dims(IoU_collapse_test, 1, self.FLAGS.max_episode_length)
         ## --------------- test  -------------------
 
 
@@ -454,7 +491,7 @@ class ActiveMVnet(object):
             ## decayed sum of future possible rewards
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
-                    update_r = reward_raw_batch[:, j] * (gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
+                    update_r = reward_raw_batch[:, j]/tf.abs(loss_list_batch[:, j])*(gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
                     update_r = update_r + reward_batch_list[:, i] 
                     update_r = tf.expand_dims(update_r, axis=1)
                     ## update reward batch list
@@ -463,25 +500,48 @@ class ActiveMVnet(object):
 
             return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
 
-        self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
-            self.recon_loss_list,
-            self.penalty_list_batch,
-            self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1,
-            r_name=None,
-            reward_weight=self.FLAGS.reward_weight,
-            penalty_weight=self.FLAGS.penalty_weight
-        )
-        
-        self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
-            self.recon_loss_list_test,
-            self.penalty_list_test,
-            self.FLAGS.gamma,
-            self.FLAGS.max_episode_length-1,
-            r_name='test',
-            reward_weight=self.FLAGS.reward_weight,
-            penalty_weight=self.FLAGS.penalty_weight
-        )
+        if self.FLAGS.reward_type == 'IG':
+            self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
+                self.recon_loss_list,
+                self.penalty_list_batch,
+                self.FLAGS.gamma,
+                self.FLAGS.max_episode_length-1,
+                r_name=None,
+                reward_weight=self.FLAGS.reward_weight,
+                penalty_weight=self.FLAGS.penalty_weight
+            )
+            
+            self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
+                self.recon_loss_list_test,
+                self.penalty_list_test,
+                self.FLAGS.gamma,
+                self.FLAGS.max_episode_length-1,
+                r_name='test',
+                reward_weight=self.FLAGS.reward_weight,
+                penalty_weight=self.FLAGS.penalty_weight
+            )
+        elif self.FLAGS.reward_type == 'IoU':
+            self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
+                tf.squeeze(self.IoU_list_batch, axis=-1),
+                self.penalty_list_batch,
+                self.FLAGS.gamma,
+                self.FLAGS.max_episode_length-1,
+                r_name=None,
+                reward_weight=self.FLAGS.reward_weight,
+                penalty_weight=self.FLAGS.penalty_weight
+            )
+            
+            self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
+                tf.squeeze(self.IoU_list_test, axis=-1),
+                self.penalty_list_test,
+                self.FLAGS.gamma,
+                self.FLAGS.max_episode_length-1,
+                r_name='test',
+                reward_weight=self.FLAGS.reward_weight,
+                penalty_weight=self.FLAGS.penalty_weight
+            )
+        else:
+            raise Exception, 'undefined reward type' 
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
@@ -652,11 +712,13 @@ class ActiveMVnet(object):
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
+            print(a_idx)
         else:
             print(action_prob)
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
+            print(a_idx)
         return a_idx
 
     def predict_vox_list(self, mvnet_input, is_training = False):

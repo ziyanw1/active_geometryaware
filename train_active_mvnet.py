@@ -107,6 +107,7 @@ flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [defaul
 flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('penalty_weight', 0.0005, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
+flags.DEFINE_float('iou_thres', 0.5, 'Reweight for computing iou [default: 0.5]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
