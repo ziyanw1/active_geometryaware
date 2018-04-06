@@ -449,7 +449,7 @@ class ActiveMVnet2D(object):
                 name='recon_loss_mat',
             )
         else:
-            recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
+            recon_loss_mat_test = tf.nn.weighted_cross_entropy_with_logits(
                 targets=self.vox_list_test, 
                 logits=self.vox_list_test_logits,
                 pos_weight=self.FLAGS.loss_coef,
