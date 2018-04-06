@@ -1,0 +1,17 @@
+the important files:
+
+other/nets.py
+- contains pooling_aggregator and gru_aggregator, which are used to aggregate unprojected 5d tensors from multiple views
+- contains voxel_net_3d_v2, which goes from aggregated features to output voxel prediction
+
+other/unproject.py
+- contains most of the logic for unprojection, unproject_and_rotate being high level wrapper you want to use
+- rotate_to_first computes rotation matrices for rotating a list of azimuths and elevations to the first one
+- also contains project_and_postprocess, which warps feature volumes so that depth axis is aligned with camera rays
+- contains flatten
+
+other/test_unproject.py
+- demonstration of how to use unproject
+
+models/active_mvnet.py
+- _create_ground_truth_voxels shows how to rotate the input gt voxels to gt from a certain viewpoint
