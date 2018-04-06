@@ -10,7 +10,7 @@ other/unproject.py
 - also contains project_and_postprocess, which warps feature volumes so that depth axis is aligned with camera rays
 - contains flatten
 
-other/test_unproject.py
+test_unproject.py
 - demonstration of how to use unproject
 
 models/active_mvnet.py
