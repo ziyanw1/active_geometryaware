@@ -104,6 +104,7 @@ flags.DEFINE_boolean('use_gan', False, 'if using GAN [default: False]')
 flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
 flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [default: 10]')
 flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [default: 10]')
+flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -125,7 +126,7 @@ flags.DEFINE_boolean("if_save_eval", False, "if save evaluation results")
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
 flags.DEFINE_integer('mem_length', 1000, 'memory length for replay memory')
-flags.DEFINE_integer('action_num', 9, 'number of actions')
+flags.DEFINE_integer('action_num', 8, 'number of actions')
 flags.DEFINE_integer('burn_in_length', 10, 'burn in length for replay memory')
 flags.DEFINE_integer('burn_in_iter', 10, 'burn in iteration for MVnet')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
@@ -259,7 +260,10 @@ def train(active_mv):
             save(active_mv, i_idx, i_idx, i_idx)
             
         if i_idx % FLAGS.test_every_step == 0 and i_idx > 0:
-            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj)
+            print('Evaluating active policy')
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj, mode='active')
+            print('Evaluating random policy')
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx, rollout_obj, mode='random')
         
         # #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         # ## TODO: 
@@ -289,7 +293,7 @@ def train(active_mv):
         #tf_util.save_scalar(i_idx, 'episode_total_reward', np.sum(rewards[:]), agent.train_writer) 
         #agent.train_writer.add_summary(merge_summary, i_idx)
 
-def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
+def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode='active'):
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
@@ -299,7 +303,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
     for i_idx in xrange(test_episode_num):
 
-        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, is_train=False)
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode=mode, is_train=False)
         stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
         if stop_idx.size == 0:
             pred_idx = -1
@@ -352,9 +356,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     eval_IoU_mean = np.mean(IoU_list)
     eval_loss_mean = np.mean(loss_list)
     
-    tf_util.save_scalar(train_i, 'eval_mean_reward', eval_r_mean, active_mv.train_writer)
-    tf_util.save_scalar(train_i, 'eval_mean_IoU', eval_IoU_mean, active_mv.train_writer)
-    tf_util.save_scalar(train_i, 'eval_mean_loss', eval_loss_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_reward_{}'.format(mode), eval_r_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_IoU_{}'.format(mode), eval_IoU_mean, active_mv.train_writer)
+    tf_util.save_scalar(train_i, 'eval_mean_loss_{}'.format(mode), eval_loss_mean, active_mv.train_writer)
 
 # def test(agent, test_episode_num, model_iter):
 #     senv = ShapeNetEnv(FLAGS)

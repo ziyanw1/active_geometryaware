@@ -145,7 +145,7 @@ class ActiveMVnet2D(object):
                 net_feat = tf.concat([net_rgb, net_feat], axis=1)
                 net_feat = slim.fully_connected(net_feat, 2048, scope='fc6')
                 net_feat = slim.fully_connected(net_feat, 4096, scope='fc7')
-                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, scope='fc8')
+                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
 
                 return tf.nn.softmax(logits), logits
     
@@ -509,6 +509,7 @@ class ActiveMVnet2D(object):
         ## reward_batch node should not back propagate
         self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
         self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
+        self.loss_act_regu = tf.reduce_sum(self.action_prob*tf.log(self.action_prob))  
 
     def _create_optimizer(self):
        
@@ -537,7 +538,7 @@ class ActiveMVnet2D(object):
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
         
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=fuse_var+aggr_var+enc_var+dec_var+[z])  
-        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=fuse_var+aggr_var+dqn_var)
+        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce+self.FLAGS.reg_act, var_list=fuse_var+aggr_var+dqn_var)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
