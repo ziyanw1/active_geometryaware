@@ -48,7 +48,7 @@ class ActiveMVnet(object):
         config.log_device_placement = False
         self.sess = tf.Session(config=config)
         ### for debug
-        #self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess, dump_root='/dev/null')
+        #self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess, dump_root='./tfdbg')
         ### for debug
         self.sess.run(tf.global_variables_initializer())
 
@@ -146,17 +146,17 @@ class ActiveMVnet(object):
                 net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
-                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', scope='vox_conv1')
-                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv2')
-                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv3')
-                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='VALID', scope='vox_conv4')
-                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='VALID', scope='vox_conv5')
+                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv1')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv2')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='VALID', normalizer_fn=None, scope='vox_conv5')
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc6')
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc7')
-                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, scope='fc8')
+                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
 
                 return tf.nn.softmax(logits), logits
     
@@ -437,7 +437,7 @@ class ActiveMVnet(object):
                 inter = tf.cast(tf.logical_and(pred_, gt_), dtype=tf.float32)
                 union = tf.cast(tf.logical_or(pred_, gt_), dtype=tf.float32)
 
-                return tf.div(tf.reduce_sum(inter, axis=[0,1,2]), tf.reduce_sum(union, axis=[0,1,2]))
+                return tf.div(tf.reduce_sum(inter, axis=[0,1,2]), tf.reduce_sum(union, axis=[0,1,2])+1)
 
             iou = lambda (x,y): compute_IoU_single(x, y, thres=thres)
             
@@ -499,6 +499,28 @@ class ActiveMVnet(object):
                         reward_batch_list[:,i+1:]])
 
             return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
+        
+        def process_iou_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
+            reward_weight=10, penalty_weight=0.0005):
+            
+            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
+            penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
+            reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
+                dtype=tf.float32, initializer=tf.zeros_initializer)
+
+            batch_size = loss_list_batch.get_shape().as_list()[0]
+            
+            ## decayed sum of future possible rewards
+            for i in range(max_episode_len):
+                for j in range(i, max_episode_len):
+                    update_r = reward_raw_batch[:, j]*(gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
+                    update_r = update_r + reward_batch_list[:, i] 
+                    update_r = tf.expand_dims(update_r, axis=1)
+                    ## update reward batch list
+                    reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
+                        reward_batch_list[:,i+1:]])
+
+            return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
 
         if self.FLAGS.reward_type == 'IG':
             self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
@@ -521,7 +543,7 @@ class ActiveMVnet(object):
                 penalty_weight=self.FLAGS.penalty_weight
             )
         elif self.FLAGS.reward_type == 'IoU':
-            self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
+            self.reward_batch_list, self.reward_raw_batch = process_iou_to_reward(
                 tf.squeeze(self.IoU_list_batch, axis=-1),
                 self.penalty_list_batch,
                 self.FLAGS.gamma,
@@ -531,7 +553,7 @@ class ActiveMVnet(object):
                 penalty_weight=self.FLAGS.penalty_weight
             )
             
-            self.reward_test_list, self.reward_raw_test = process_loss_to_reward(
+            self.reward_test_list, self.reward_raw_test = process_iou_to_reward(
                 tf.squeeze(self.IoU_list_test, axis=-1),
                 self.penalty_list_test,
                 self.FLAGS.gamma,
@@ -559,7 +581,7 @@ class ActiveMVnet(object):
         #print(self.responsible_action.get_shape().as_list())
         #sys.exit()
         #self.reward_batch = collapse_dims(self.reward_batch_list)
-        self.loss_reinforce = -tf.reduce_mean(tf.log(self.responsible_action)*self.reward_batch, name='reinforce_loss')
+        self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.reward_batch, name='reinforce_loss')
         self.loss_act_regu = tf.reduce_sum(self.action_prob*tf.log(self.action_prob))  
 
     def _create_optimizer(self):
