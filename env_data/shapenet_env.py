@@ -59,6 +59,8 @@ class ShapeNetEnv():
         self.test_azims = np.random.choice(azim_all, size=(self.test_len, 1))
         self.test_elevs = np.random.choice(elev_all, size=(self.test_len, 1))
         self.action_space_n = 8
+        self.azim_all = azim_all
+        self.elev_all = elev_all
 
     def reset(self, is_training, test_idx=0):
         self.step_count = 0

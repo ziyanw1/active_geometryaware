@@ -108,6 +108,7 @@ flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [defaul
 flags.DEFINE_float('penalty_weight', 0.0005, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_float('iou_thres', 0.5, 'Reweight for computing iou [default: 0.5]')
+flags.DEFINE_boolean('random_pretrain', False, 'if random pretrain mvnet')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -233,7 +234,10 @@ def train(active_mv):
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
         for i in xrange(FLAGS.burn_in_iter):
-            mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+            if not FLAGS.random_pretrain:
+                mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+            else:
+                mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
             burnin_log(i, out_stuff, time.time()-tic)

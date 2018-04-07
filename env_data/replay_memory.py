@@ -407,6 +407,53 @@ class ReplayMemory():
             return self.gblq.get()
         else:
             return self._get_batch_list(batch_size)
+
+    def get_batch_list_random(self, env, batch_size=4):
+        mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
+        rand_idxes = np.random.randint(0, env.train_len, (batch_size,))
+        azimuths_batch = np.random.choice(env.azim_all, (batch_size, self.max_episode_length))
+        elevations_batch = np.random.choice(env.elev_all, (batch_size, self.max_episode_length))  
+        for b_idx, (rand_idx, azimuths, elevations) in enumerate(zip(rand_idxes, azimuths_batch, elevations_batch)):
+            model_id = env.trainval_list[rand_idx] 
+            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+            voxel = self.read_vox(voxel_name)
+            penalties = np.abs(azimuths-azimuths[0]) + np.abs(elevations-elevations[0])
+
+            for l_idx in range(self.max_episode_length):
+                azimuth = azimuths[l_idx]
+                elevation = elevations[l_idx]
+                action = None
+                penalty = penalties[l_idx]
+
+                single_input = self.input_factory.make(azimuth, elevation, model_id, action = action, penalty = penalty)
+                mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
+        return mvinputs
+        #for b_idx in range(batch_size):
+        #    rand_idx = np.random.randint(0, self.upper_bound())
+        #    data_ = self.mem_list[rand_idx]
+
+        #    azimuths = np.asarray(data_.states[0])
+        #    elevations = np.asarray(data_.states[1])
+        #    actions = np.asarray(np.expand_dims(data_.actions, axis=1))
+        #    penalties = np.abs(azimuths-azimuths[0]) + np.abs(elevations-elevations[0])
+
+        #    model_id = data_.model_id
+        #    voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+        #    voxel = self.read_vox(voxel_name)
+
+        #    mvinputs.put_voxel(voxel, batch_idx = b_idx)
+
+        #    for l_idx in range(self.max_episode_length):
+        #        
+        #        azimuth = azimuths[l_idx]
+        #        elevation = elevations[l_idx]
+        #        action = actions[l_idx] if (l_idx < self.max_episode_length-1) else None
+        #        penalty = penalties[l_idx]
+
+        #        single_input = self.input_factory.make(azimuth, elevation, model_id, action = action, penalty = penalty)
+        #        mvinputs.put(single_input, episode_idx = l_idx, batch_idx = b_idx)
+
+        #return mvinputs
     
     def get_decay_reward(self, reward_list_batch, current_idx_list):
         gamma = self.FLAGS.gamma
