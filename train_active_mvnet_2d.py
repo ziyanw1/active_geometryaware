@@ -240,7 +240,7 @@ def train(active_mv):
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
             burnin_summ = burnin_log(i, out_stuff, time.time()-tic)
-            active_mv.train_writer.add_summary(summ_burnin, i)
+            active_mv.train_writer.add_summary(burnin_summ, i)
 
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
@@ -334,8 +334,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             print 'max', np.max(lastpred)
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
+
         
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[pred_idx], vox_gtr)
+        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gt)
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
