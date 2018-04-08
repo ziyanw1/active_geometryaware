@@ -429,7 +429,8 @@ class ActiveMVnet(object):
         ## use last view for reconstruction
         #self.recon_loss = tf.reduce_sum(self.recon_loss_list[:, -1, ...], axis=0, name='recon_loss')
         self.recon_loss = tf.reduce_sum(self.recon_loss_list, axis=[0, 1], name='recon_loss')
-        self.recon_loss_last = tf.reduce_sum(self.recon_loss_list[:, -1], axis=0, name='recon_loss')
+        self.recon_loss_last = tf.reduce_sum(self.recon_loss_list[:, -1], axis=0, name='recon_loss_last')
+        self.recon_loss_first = tf.reduce_sum(self.recon_loss_list[:, 0], axis=0, name='recon_loss_first')
 
         ## TODO: compute IoU
         def compute_IoU(vox_list_pred, vox_list_gt, thres=0.5, iou_name=None):
@@ -619,6 +620,7 @@ class ActiveMVnet(object):
         
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
         self.opt_recon_last = self.optimizer.minimize(self.recon_loss_last, var_list=aggr_var+unet_var+[z])  
+        self.opt_recon_first = self.optimizer.minimize(self.recon_loss_first, var_list=aggr_var+unet_var+[z])
         self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
         self.opt_rein_recon = self.optimizer.minimize(
             self.recon_loss+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
@@ -663,8 +665,13 @@ class ActiveMVnet(object):
             'reward_raw_batch',
             'loss_reinforce',
         ]
-
-        burnin_list = basic_list[:] + ['opt_recon']
+        
+        if self.FLAGS.burin_opt == 0:
+            burnin_list = basic_list[:] + ['opt_recon']
+        elif self.FLAGS.burin_opt == 1:
+            burnin_list = basic_list[:] + ['opt_recon_last', 'recon_loss_last']
+        elif self.FLAGS.burin_opt == 2:
+            burnin_list = basic_list[:] + ['opt_recon_first', 'recon_loss_first']
         train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train']
         train_mvnet_list = burnin_list[:] + ['merged_train']
 

@@ -109,6 +109,7 @@ flags.DEFINE_float('penalty_weight', 0.0005, 'rescale factor for reward value [d
 flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
 flags.DEFINE_float('iou_thres', 0.5, 'Reweight for computing iou [default: 0.5]')
 flags.DEFINE_boolean('random_pretrain', False, 'if random pretrain mvnet')
+flags.DEFINE_integer('burin_opt', 0, '0: on all, 1: on last, 2: on first [default: 0]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
