@@ -487,7 +487,7 @@ class ActiveMVnet(object):
         def process_loss_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
             reward_weight=10, penalty_weight=0.0005):
             
-            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
+            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:] ## loss should be gradually decreasing
             penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
@@ -509,7 +509,7 @@ class ActiveMVnet(object):
         def process_iou_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
             reward_weight=10, penalty_weight=0.0005):
             
-            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:]
+            reward_raw_batch = loss_list_batch[:, 1:]-loss_list_batch[:, :-1] ## IoU should be gradually increasing
             penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
