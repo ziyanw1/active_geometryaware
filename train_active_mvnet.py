@@ -192,16 +192,18 @@ def restore_from_iter(ae, iter):
 def burnin_log(i, out_stuff, t):
     recon_loss = out_stuff.recon_loss
     log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, recon_loss, t))
-    
+    summary = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
+    return summary
 
 def train_log(i, out_stuff, t):
     recon_loss = out_stuff.recon_loss/(FLAGS.max_episode_length*FLAGS.batch_size)
     mean_episode_reward = None
     reinforce_loss = out_stuff.loss_reinforce
+    loss_act_reg = out_stuff.loss_act_regu
     mean_episode_reward = np.mean(np.sum(out_stuff.reward_raw_batch, axis=1), axis=0)
     log_string(
-        'Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, time: {}, {}, {}'.format(
-            i, recon_loss, mean_episode_reward, reinforce_loss, t[1]-t[0], t[2]-t[1], t[3]-t[2],
+        'Iter: {}, recon_loss: {:.4f}, mean_episode_reward: {}, reinforce_loss: {}, reg_act: {}, time: {}, {}, {}'.format(
+            i, recon_loss, mean_episode_reward, reinforce_loss, loss_act_reg, t[1]-t[0], t[2]-t[1], t[3]-t[2],
         )
     )
 
@@ -240,7 +242,8 @@ def train(active_mv):
                 mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
-            burnin_log(i, out_stuff, time.time()-tic)
+            summ_burnin = burnin_log(i, out_stuff, time.time()-tic)
+            active_mv.train_writer.add_summary(summ_burnin, i)
 
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 

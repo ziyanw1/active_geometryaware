@@ -118,7 +118,11 @@ class ActiveMVnet(object):
             
             if if_bn:
                 batch_normalizer_gen = slim.batch_norm
-                batch_norm_params_gen = {'is_training': self.is_training, 'decay': self.FLAGS.bn_decay}
+                batch_norm_params_gen = {'is_training': self.is_training, 
+                                         'decay': self.FLAGS.bn_decay,
+                                         'epsilon': 1e-5,
+                                         'scale': True,
+                                         'updates_collections': None}
                 #batch_norm_params_gen = {'is_training': True, 'decay': self.FLAGS.bn_decay}
                 #batch_normalizer_gen = None
                 #batch_norm_params_gen = None
@@ -172,7 +176,8 @@ class ActiveMVnet(object):
             #debug = int(vox_feat.get_shape().as_list()[0]) > self.FLAGS.max_episode_length
             debug = False
             with tf.variable_scope(scope_name, reuse = reuse):
-                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, return_logits = True, debug = debug)
+                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, bn_trainmode=self.is_training, 
+                    return_logits = True, debug = debug)
         elif self.FLAGS.unet_name == 'OUTLINE':
             return vox_feat, tf.zeros_like(vox_feat)
         else:
@@ -602,12 +607,15 @@ class ActiveMVnet(object):
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
+        #self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+
         #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var, global_step=self.counter)  
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var,
         #    global_step=self.counter)
 
         #so that we have always have something to optimize
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
+        #print(self.update_ops)
         
         self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
         self.opt_recon_last = self.optimizer.minimize(self.recon_loss_last, var_list=aggr_var+unet_var+[z])  
@@ -620,12 +628,14 @@ class ActiveMVnet(object):
             var_list=aggr_var+dqn_var+unet_var)
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
         #self.opt_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer, 
-        #    variables_to_train=aggr_var+unet_var+[z])
-        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
-        #    variables_to_train=aggr_var+dqn_var)
-        #self.opt_reinforce = z
-        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.recon_loss, optimizer=self.optimizer,
-        #    variables_to_train=aggr_var+dqn_var)
+        #    variables_to_train=aggr_var+unet_var)
+        ##self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
+        ##    variables_to_train=aggr_var+dqn_var)
+        ##self.opt_reinforce = z
+        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
+        #    optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var)
+        #self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss+self.loss_reinforce
+        #    +self.FLAGS.reg_act*self.loss_act_regu, optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var+unet_var)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
@@ -633,6 +643,7 @@ class ActiveMVnet(object):
             self.summary_loss_recon_train = tf.summary.scalar('train/loss_recon',
                 self.recon_loss/(self.FLAGS.max_episode_length*self.FLAGS.batch_size))
             self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
+            self.summary_loss_act_regu_train = tf.summary.scalar('train/loss_act_regu', self.loss_act_regu)
             self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
             self.merged_train = tf.summary.merge_all()
 
@@ -654,7 +665,7 @@ class ActiveMVnet(object):
         ]
 
         burnin_list = basic_list[:] + ['opt_recon']
-        train_list = basic_list[:] + ['opt_rein_recon', 'merged_train']
+        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train']
         train_mvnet_list = burnin_list[:] + ['merged_train']
 
         self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
