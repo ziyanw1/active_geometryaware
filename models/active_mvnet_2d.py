@@ -656,7 +656,7 @@ class ActiveMVnet2D(object):
     def select_action(self, mvnet_input, idx, is_training = False):
         
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = False, include_action = False, train_mode = is_training
+            mvnet_input, include_vox = False, include_action = False, train_mode = False
         )
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
@@ -670,11 +670,12 @@ class ActiveMVnet2D(object):
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
+            print(a_idx)
         else:
             print(action_prob)
-            a_response = np.random.choice(action_prob, p=action_prob)
 
-            a_idx = np.argmax(action_prob == a_response)
+            a_idx = np.argmax(action_prob)
+            print(a_idx)
         return a_idx
 
     def predict_vox_list(self, mvnet_input, is_training = False):

@@ -64,6 +64,8 @@ class ShapeNetEnv():
         self.action_space_n = 8
         self.azim_all = azim_all
         self.elev_all = elev_all
+        self.azim_for_init = azim_for_init
+        self.elev_for_init = elev_for_init
 
     def reset(self, is_training, test_idx=0):
         self.step_count = 0
