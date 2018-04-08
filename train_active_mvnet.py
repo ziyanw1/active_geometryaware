@@ -251,7 +251,7 @@ def train(active_mv):
 
         t0 = time.time()
 
-        rollout_obj.go(i_idx, verbose = True, add_to_mem = True)
+        rollout_obj.go(i_idx, verbose = True, add_to_mem = True, is_train=True)
         t1 = time.time()
 
         replay_mem.enable_gbl()

@@ -736,8 +736,8 @@ class ActiveMVnet(object):
     def select_action(self, mvnet_input, idx, is_training = False):
         
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = False, include_action = False, include_penalty = False, train_mode = is_training
-        )
+            mvnet_input, include_vox = False, include_action = False, include_penalty = False, train_mode = False
+        ) ## both during sampling and testing, train_mode is always False
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
         #    action_prob = self.sess.run([self.action_prob], feed_dict=feed_dict)
@@ -745,17 +745,17 @@ class ActiveMVnet(object):
         #    return np.random.randint(low=0, high=FLAGS.action_num)
         stuff = self.sess.run([self.action_prob_test], feed_dict=feed_dict)
         action_prob = np.squeeze(np.copy(stuff[0]))[idx]
-        if is_training:
+        if is_training:  ## sampling during training
             print(action_prob)
             a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
-        else:
+        else:           ## testing
             print(action_prob)
-            a_response = np.random.choice(action_prob, p=action_prob)
+            #a_response = np.random.choice(action_prob, p=action_prob)
 
-            a_idx = np.argmax(action_prob == a_response)
+            a_idx = np.argmax(action_prob)
             print(a_idx)
         return a_idx
 

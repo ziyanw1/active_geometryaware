@@ -23,7 +23,10 @@ cat_name = {
 
 azim_all = np.linspace(0, 360, 37)
 azim_all = azim_all[0:-1]
+azim_for_init = np.linspace(0, 360, 9)
+azim_for_init = np.asarray([0, 40, 90, 120, 180, 210, 270, 330])
 elev_all = np.linspace(10, 60, 6)
+elev_for_init = np.asarray([40]) 
 
 class ShapeNetEnv():
     def __init__(self, FLAGS):
@@ -69,8 +72,10 @@ class ShapeNetEnv():
         if is_training:
             rand_idx = np.random.randint(0, self.train_len) 
             self.current_model = self.trainval_list[rand_idx]
-            self.current_azim = np.random.choice(azim_all)
-            self.current_elev = np.random.choice(elev_all)
+            #self.current_azim = np.random.choice(azim_all)
+            self.current_azim = np.random.choice(azim_for_init)
+            #self.current_elev = np.random.choice(elev_all)
+            self.current_elev = np.random.choice(elev_for_init)
         else:
             #rand_idx = np.random.randint(0, self.test_len)
             t_idx = min(test_idx, self.test_len)

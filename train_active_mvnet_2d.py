@@ -105,6 +105,7 @@ flags.DEFINE_boolean('use_coef', False, 'if use coefficient for loss')
 flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [default: 10]')
 flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
+flags.DEFINE_boolean('random_pretrain', False, 'if random pretrain mvnet')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -188,6 +189,8 @@ def restore_from_iter(ae, iter):
 def burnin_log(i, out_stuff, t):
     recon_loss = out_stuff.recon_loss
     log_string('Burn in iter: {}, recon_loss: {}, unproject time: {}s'.format(i, recon_loss, t))
+    summary = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
+    return summary
     
 
 def train_log(i, out_stuff, t):
@@ -230,10 +233,14 @@ def train(active_mv):
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
         for i in xrange(FLAGS.burn_in_iter):
-            mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+            if not FLAGS.random_pretrain:
+                mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+            else:
+                mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
-            burnin_log(i, out_stuff, time.time()-tic)
+            burnin_summ = burnin_log(i, out_stuff, time.time()-tic)
+            active_mv.train_writer.add_summary(summ_burnin, i)
 
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
 
@@ -248,7 +255,7 @@ def train(active_mv):
         mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
         t2 = time.time()
         
-        out_stuff = active_mv.run_step(mvnet_input, mode='train', is_training = True)
+        out_stuff = active_mv.run_step(mvnet_input, mode='train_mv', is_training = True)
         replay_mem.disable_gbl()
         t3 = time.time()
         

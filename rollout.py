@@ -34,7 +34,7 @@ class Rollout(object):
 
             tic = time.time()
             if mode == 'active':
-                agent_action = self.agent.select_action(mvnet_input, e_idx-1)
+                agent_action = self.agent.select_action(mvnet_input, e_idx-1, is_training=is_train)
             elif mode == 'random':
                 probs = [1.0/8]*8
                 agent_action = np.random.choice(self.env.action_space_n, p=probs)
