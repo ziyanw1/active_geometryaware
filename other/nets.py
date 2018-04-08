@@ -663,7 +663,11 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
 
         if if_bn:
             batch_normalizer_gen = slim.batch_norm
-            batch_norm_params_gen = {'is_training': is_training, 'decay': FLAGS.bn_decay}
+            batch_norm_params_gen = {'is_training': is_training, 
+                                     'decay': FLAGS.bn_decay,
+                                     'epsilon': 1e-5,
+                                     'scale': True,
+                                     'updates_collections': None}
         else:
             batch_normalizer_gen = None
             batch_norm_params_gen = None
