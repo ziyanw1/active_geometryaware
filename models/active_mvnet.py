@@ -150,6 +150,7 @@ class ActiveMVnet(object):
                 net_rgb = slim.conv2d(net_rgb, 128, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv5')
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
+                vox = tf.stop_gradient(tf.identity(vox), name='dqn_vox')
                 net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', scope='vox_conv1')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv2')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv3')
@@ -161,8 +162,9 @@ class ActiveMVnet(object):
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc6')
                 net_feat = slim.fully_connected(net_feat, 1024, scope='fc7')
                 logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
+                values = slim.fully_connected(net_feat, 1, activation_fn=None, normalizer_fn=None, scope='fc8_value')
 
-                return tf.nn.softmax(logits), logits
+                return tf.nn.softmax(logits), logits, values
     
     def _create_unet3d(self, vox_feat, channels, trainable=True, if_bn=False, reuse=False, scope_name='unet_3d'):
 
@@ -207,7 +209,7 @@ class ActiveMVnet(object):
 
     def _create_policy_net(self):
         self.rgb_batch_norm = tf.subtract(self.rgb_batch, 0.5)
-        self.action_prob, self.logits = self._create_dqn_two_stream(self.rgb_batch_norm, self.vox_batch,
+        self.action_prob, self.logits, _ = self._create_dqn_two_stream(self.rgb_batch_norm, self.vox_batch,
             if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
 
     def _create_network(self):
@@ -265,46 +267,47 @@ class ActiveMVnet(object):
                 scope_name='aggr_64'
             )
 
-            #self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
             
-            vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
-            vox_pred_first, vox_logits_first = self._create_unet3d(
-                vox_feat_unstack[0],
-                channels=self.FLAGS.agg_channels,
-                trainable=True,
-                if_bn=self.FLAGS.if_bn,
-                scope_name='unet_3d'
-            )
-
-            unet_3d_reuse = lambda x: self._create_unet3d(
-                x,
-                channels=self.FLAGS.agg_channels,
-                trainable=True,
-                if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE,
-                scope_name='unet_3d'
-            )
-            unet_3d_reuse_test = lambda x: self._create_unet3d(
-                x,
-                channels=self.FLAGS.agg_channels,
-                trainable=False,
-                if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE,
-                scope_name='unet_3d'
-            )
-            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
-            self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
-            self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
-
-            #self.vox_pred, vox_logits = self._create_unet3d(
-            #    self.vox_feat,
+            #vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
+            #vox_pred_first, vox_logits_first = self._create_unet3d(
+            #    vox_feat_unstack[0],
             #    channels=self.FLAGS.agg_channels,
             #    trainable=True,
             #    if_bn=self.FLAGS.if_bn,
             #    scope_name='unet_3d'
             #)
 
-            #self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            #unet_3d_reuse = lambda x: self._create_unet3d(
+            #    x,
+            #    channels=self.FLAGS.agg_channels,
+            #    trainable=True,
+            #    if_bn=self.FLAGS.if_bn,
+            #    reuse=True,
+            #    scope_name='unet_3d'
+            #)
+            #unet_3d_reuse_test = lambda x: self._create_unet3d(
+            #    x,
+            #    channels=self.FLAGS.agg_channels,
+            #    trainable=False,
+            #    if_bn=self.FLAGS.if_bn,
+            #    reuse=True,
+            #    scope_name='unet_3d'
+            #)
+            #vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
+            #self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
+            #self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
+
+            self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
+            self.vox_pred, vox_logits = self._create_unet3d(
+                self.vox_feat,
+                channels=self.FLAGS.agg_channels,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                scope_name='unet_3d'
+            )
+
+            self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            self.vox_list_pred = uncollapse_dims(self.vox_pred, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             
             ## --------------- train -------------------
             ## --------------- test  -------------------
@@ -313,29 +316,30 @@ class ActiveMVnet(object):
                 trainable=False,
                 channels=self.FLAGS.agg_channels,
                 if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE,
+                reuse=True,
                 scope_name='aggr_64'
             )
 
-            #self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
-            vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
+            #vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
 
-            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
-                dtype=(tf.float32, tf.float32))
+            #vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
+            #    dtype=(tf.float32, tf.float32))
 
-            self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
-            self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
-            self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
+            #self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
+            #self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
+            #self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
             
-            #self.vox_pred_test, vox_test_logits = self._create_unet3d(
-            #    self.vox_feat_test,
-            #    channels=self.FLAGS.agg_channels,
-            #    if_bn=self.FLAGS.if_bn,
-            #    reuse=tf.AUTO_REUSE,
-            #    scope_name='unet_3d'
-            #)
+            self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
+            self.vox_pred_test, vox_test_logits = self._create_unet3d(
+                self.vox_feat_test,
+                channels=self.FLAGS.agg_channels,
+                if_bn=self.FLAGS.if_bn,
+                reuse=tf.AUTO_REUSE,
+                scope_name='unet_3d'
+            )
             
-            #self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
+            self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
+            self.vox_list_test_pred = uncollapse_dims(self.vox_pred_test, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
             
         if self.FLAGS.debug_mode:
@@ -354,11 +358,20 @@ class ActiveMVnet(object):
             #RGB_list_norm = tf.unstack(self.RGB_list_batch_norm, axis=1)
             #vox_feat_list_ = tf.unstack(self.vox_feat_list, axis=1)
             ## collapse input for easy inference instead of inference multiple times
-            self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm_use)
-            self.vox_feat_use = collapse_dims(self.vox_feat_list_use)
+            self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm)
+            self.vox_feat_use = collapse_dims(self.vox_feat_list)
             
-            self.action_prob, _ = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
+            self.action_prob, _, self.state_values = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
                 trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+            self.action_prob = uncollapse_dims(self.action_prob, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            self.action_prob = tf.stack(tf.unstack(self.action_prob, axis=1)[:-1], axis=1)
+            self.action_prob = collapse_dims(self.action_prob)
+            self.state_values = uncollapse_dims(self.state_values, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            self.value_batch = tf.stack(tf.unstack(self.state_values, axis=1)[:-1], axis=1)
+            self.value_batch = collapse_dims(self.value_batch)
+            self.value_next_batch = tf.stack(tf.unstack(self.state_values, axis=1)[1:], axis=1)
+            self.value_next_batch = tf.stop_gradient(tf.identity(self.value_next_batch))
+            self.value_next_batch = collapse_dims(self.value_next_batch)
             ### TODO:BATCH NORM ON TIME SEQ
 
             ### TODO:BATCH NORM ON EACH TIME STEP
@@ -385,10 +398,13 @@ class ActiveMVnet(object):
             self.vox_feat_list_test_use, _ = tf.split(self.vox_feat_list_test,
                 [self.FLAGS.max_episode_length-1, 1], axis=1)
             ## collapse input for easy inference instead of inference multiple times
-            self.RGB_use_test = collapse_dims(self.RGB_list_test_norm_use)
-            self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test_use)
-            self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
-                trainable=False, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+            self.RGB_use_test = collapse_dims(self.RGB_list_test_norm)
+            self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test)
+            self.action_prob_test, _, self.state_values_test = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
+                trainable=False, if_bn=self.FLAGS.if_bn, reuse=True, scope_name='dqn_two_stream')
+            self.action_prob_test = uncollapse_dims(self.action_prob_test, 1, self.FLAGS.max_episode_length)
+            self.action_prob_test = tf.stack(tf.unstack(self.action_prob_test, axis=1)[:-1], axis=1)
+            self.action_prob_test = collapse_dims(self.action_prob_test)
             ## TODO:BATCH NORM ON TIME SEQ
             
             ### TODO:BATCH NORM ON EACH TIME STEP
@@ -452,7 +468,7 @@ class ActiveMVnet(object):
 
             return iou_collapse
         
-        IoU_collapse = compute_IoU(self.vox_pred, self.rotated_vox_list_batch, thres=self.FLAGS.iou_thres)
+        IoU_collapse = compute_IoU(self.vox_list_pred, self.rotated_vox_list_batch, thres=self.FLAGS.iou_thres)
         self.IoU_list_batch = uncollapse_dims(IoU_collapse, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
 
         ## --------------- train -------------------
@@ -479,7 +495,7 @@ class ActiveMVnet(object):
         )
         
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
-        IoU_collapse_test = compute_IoU(self.vox_pred_test_, self.rotated_vox_list_test, thres=self.FLAGS.iou_thres,
+        IoU_collapse_test = compute_IoU(self.vox_list_test_pred, self.rotated_vox_list_test, thres=self.FLAGS.iou_thres,
             iou_name='test')
         self.IoU_list_test = uncollapse_dims(IoU_collapse_test, 1, self.FLAGS.max_episode_length)
         ## --------------- test  -------------------
@@ -498,7 +514,8 @@ class ActiveMVnet(object):
             ## decayed sum of future possible rewards
             for i in range(max_episode_len):
                 for j in range(i, max_episode_len):
-                    update_r = reward_raw_batch[:, j]/tf.abs(loss_list_batch[:, j])*(gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
+                    #update_r = reward_raw_batch[:, j]/tf.abs(loss_list_batch[:, j])*(gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
+                    update_r = reward_raw_batch[:, j]*(gamma**(j-i)) - penalty_weight*penalty_use_batch[:, j]
                     update_r = update_r + reward_batch_list[:, i] 
                     update_r = tf.expand_dims(update_r, axis=1)
                     ## update reward batch list
@@ -582,13 +599,20 @@ class ActiveMVnet(object):
         #print(tf.reshape(self.action_prob, [-1]).get_shape().as_list())
         #print(self.indexes.get_shape().as_list())
         ## reward_batch node should not back propagate
-        self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
+        self.reward_batch = tf.stop_gradient(tf.identity(collapse_dims(self.reward_batch_list)), name='reward_batch')
         #print(self.reward_batch_list.get_shape().as_list())
         #print(self.reward_batch.get_shape().as_list())
         #print(self.responsible_action.get_shape().as_list())
         #sys.exit()
         #self.reward_batch = collapse_dims(self.reward_batch_list)
-        self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.reward_batch, name='reinforce_loss')
+        #debug_reward = tf.where(self.reward_batch>0, tf.ones_like(self.reward_batch),
+        #    -1*tf.ones_like(self.reward_batch))
+        self.critic_loss = tf.reduce_sum(tf.norm(self.value_batch-self.reward_batch-self.FLAGS.gamma*self.value_next_batch), \
+            name='critic_loss')
+        self.advantage_batch = self.reward_batch - self.value_batch
+        #self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.reward_batch, name='reinforce_loss')
+        self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.advantage_batch, name='reinforce_loss')
+        #self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*debug_reward, name='reinforce_loss')
         self.loss_act_regu = tf.reduce_sum(self.action_prob*tf.log(self.action_prob))  
 
     def _create_optimizer(self):
@@ -607,6 +631,8 @@ class ActiveMVnet(object):
             self.optimizer = tf.train.MomentumOptimizer(self.learning_rate, momentum=self.FLAGS.momentum)
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
+            self.optimizer_burnin = tf.train.AdamOptimizer(self.learning_rate)
+            self.optimizer_critic = tf.train.AdamOptimizer(self.learning_rate)
 
         #self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 
@@ -618,26 +644,33 @@ class ActiveMVnet(object):
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
         #print(self.update_ops)
         
-        self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
-        self.opt_recon_last = self.optimizer.minimize(self.recon_loss_last, var_list=aggr_var+unet_var+[z])  
-        self.opt_recon_first = self.optimizer.minimize(self.recon_loss_first, var_list=aggr_var+unet_var+[z])
-        self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
-        self.opt_rein_recon = self.optimizer.minimize(
-            self.recon_loss+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
-            var_list=aggr_var+dqn_var+unet_var)
-        self.opt_rein_recon_last = self.optimizer.minimize(
-            self.recon_loss_last+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
-            var_list=aggr_var+dqn_var+unet_var)
+        #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
+        #self.opt_recon_last = self.optimizer.minimize(self.recon_loss_last, var_list=aggr_var+unet_var+[z])  
+        #self.opt_recon_first = self.optimizer.minimize(self.recon_loss_first, var_list=aggr_var+unet_var+[z])
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
-        #self.opt_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer, 
-        #    variables_to_train=aggr_var+unet_var)
-        ##self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
-        ##    variables_to_train=aggr_var+dqn_var)
-        ##self.opt_reinforce = z
-        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-        #    optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var)
-        #self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss+self.loss_reinforce
-        #    +self.FLAGS.reg_act*self.loss_act_regu, optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var+unet_var)
+        #self.opt_rein_recon = self.optimizer.minimize(
+        #    self.recon_loss+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
+        #    var_list=aggr_var+dqn_var+unet_var)
+        #self.opt_rein_recon_last = self.optimizer.minimize(
+        #    self.recon_loss_last+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
+        #    var_list=aggr_var+dqn_var+unet_var)
+        #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
+        self.opt_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+        self.opt_recon_last = slim.learning.create_train_op(self.recon_loss_last, optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+        self.opt_recon_first = slim.learning.create_train_op(self.recon_loss_first, optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
+        #    variables_to_train=aggr_var+dqn_var)
+        #self.opt_reinforce = z
+        self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
+            optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var, clip_gradient_norm=30)
+        self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
+            variables_to_train=dqn_var, clip_gradient_norm=30)
+        self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss+self.loss_reinforce
+            +self.FLAGS.reg_act*self.loss_act_regu, optimizer=self.optimizer,
+            variables_to_train=aggr_var+dqn_var+unet_var, clip_gradient_norm=30)
 
     def _create_summary(self):
         if self.FLAGS.is_training:
@@ -647,6 +680,7 @@ class ActiveMVnet(object):
             self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
             self.summary_loss_act_regu_train = tf.summary.scalar('train/loss_act_regu', self.loss_act_regu)
             self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
+            self.summary_critic_loss_train = tf.summary.scalar('train/critic_loss', self.critic_loss)
             self.merged_train = tf.summary.merge_all()
 
     def _create_collections(self):
@@ -667,12 +701,12 @@ class ActiveMVnet(object):
         ]
         
         if self.FLAGS.burin_opt == 0:
-            burnin_list = basic_list[:] + ['opt_recon']
+            burnin_list = basic_list[:] + ['opt_recon', 'critic_loss', 'opt_critic']
         elif self.FLAGS.burin_opt == 1:
             burnin_list = basic_list[:] + ['opt_recon_last', 'recon_loss_last']
         elif self.FLAGS.burin_opt == 2:
             burnin_list = basic_list[:] + ['opt_recon_first', 'recon_loss_first']
-        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train']
+        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'critic_loss', 'opt_critic']
         train_mvnet_list = burnin_list[:] + ['merged_train']
 
         self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
