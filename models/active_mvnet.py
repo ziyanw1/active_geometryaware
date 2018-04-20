@@ -33,13 +33,14 @@ class ActiveMVnet(object):
         self._create_ground_truth_voxels()
         self._create_network()
         self._create_loss()
-        if FLAGS.is_training:
-            self._create_optimizer()
+        #if FLAGS.is_training:
+        self._create_optimizer()
         self._create_summary()
         self._create_collections()
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
+        self.pretrain_saver = tf.train.Saver(max_to_keep=None)
         
         # create a sess
         config = tf.ConfigProto()
@@ -105,6 +106,8 @@ class ActiveMVnet(object):
         
         self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
         self.rotated_vox_list_test = tile_voxels(self.rotated_vox_test)
+        self.vox_list_batch = tile_voxels(self.vox_batch[..., None])
+        self.vox_list_test = tile_voxels(self.vox_test[..., None])
 
         if self.FLAGS.debug_mode:
             summ.histogram('ground_truth_voxels', self.rotated_vox_batch)
@@ -122,7 +125,8 @@ class ActiveMVnet(object):
                                          'decay': self.FLAGS.bn_decay,
                                          'epsilon': 1e-5,
                                          'scale': True,
-                                         'updates_collections': None}
+                                         'updates_collections': None,
+                                         'trainable': trainable}
                 #batch_norm_params_gen = {'is_training': True, 'decay': self.FLAGS.bn_decay}
                 #batch_normalizer_gen = None
                 #batch_norm_params_gen = None
@@ -143,7 +147,7 @@ class ActiveMVnet(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
                 
-                net_rgb = slim.conv2d(rgb, 16, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv1')
+                net_rgb = slim.conv2d(rgb, 32, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv1')
                 net_rgb = slim.conv2d(net_rgb, 32, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv2')
                 net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv3')
                 net_rgb = slim.conv2d(net_rgb, 64, kernel_size=[3,3], stride=[2,2], padding='VALID', scope='rgb_conv4')
@@ -151,6 +155,8 @@ class ActiveMVnet(object):
                 net_rgb = slim.flatten(net_rgb, scope='rgb_flatten')
 
                 vox = tf.stop_gradient(tf.identity(vox), name='dqn_vox')
+                #vox = slim.batch_norm(vox, decay=self.FLAGS.bn_decay, scale=True, epsilon=1e-5,
+                #    updates_collections=None, is_training=self.is_training, trainable=trainable)
                 net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', scope='vox_conv1')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv2')
                 net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv3')
@@ -159,8 +165,57 @@ class ActiveMVnet(object):
                 net_vox = slim.flatten(net_vox, scope='vox_flatten')
                 
                 net_feat = tf.concat([net_rgb, net_vox], axis=1)
-                net_feat = slim.fully_connected(net_feat, 1024, scope='fc6')
-                net_feat = slim.fully_connected(net_feat, 1024, scope='fc7')
+                net_feat = slim.fully_connected(net_feat, 4096, scope='fc6')
+                net_feat = slim.fully_connected(net_feat, 4096, scope='fc7')
+                logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
+                values = slim.fully_connected(net_feat, 1, activation_fn=None, normalizer_fn=None, scope='fc8_value')
+
+                return tf.nn.softmax(logits), logits, values
+    
+    def _create_dqn(self, vox, trainable=True, if_bn=False, reuse=False, scope_name='dqn'):
+        
+        with tf.variable_scope(scope_name) as scope:
+            if reuse:
+                scope.reuse_variables()
+            
+            if if_bn:
+                batch_normalizer_gen = slim.batch_norm
+                batch_norm_params_gen = {'is_training': self.is_training, 
+                                         'decay': self.FLAGS.bn_decay,
+                                         'epsilon': 1e-5,
+                                         'scale': True,
+                                         'updates_collections': None,
+                                         'trainable': trainable}
+                #batch_norm_params_gen = {'is_training': True, 'decay': self.FLAGS.bn_decay}
+                #batch_normalizer_gen = None
+                #batch_norm_params_gen = None
+            else:
+                #self._print_arch('=== NOT Using BN for GENERATOR!')
+                batch_normalizer_gen = None
+                batch_norm_params_gen = None
+
+            if self.FLAGS.if_dqn_l2Reg:
+                weights_regularizer = slim.l2_regularizer(1e-5)
+            else:
+                weights_regularizer = None
+            
+            with slim.arg_scope([slim.fully_connected, slim.conv2d, slim.conv3d],
+                    activation_fn=self.activation_fn,
+                    trainable=trainable,
+                    normalizer_fn=batch_normalizer_gen,
+                    normalizer_params=batch_norm_params_gen,
+                    weights_regularizer=weights_regularizer):
+                
+                vox = tf.stop_gradient(tf.identity(vox), name='dqn_vox')
+                net_vox = slim.conv3d(vox, 16, kernel_size=3, stride=2, padding='VALID', scope='vox_conv1')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv2')
+                net_vox = slim.conv3d(net_vox, 32, kernel_size=3, stride=2, padding='VALID', scope='vox_conv3')
+                net_vox = slim.conv3d(net_vox, 64, kernel_size=3, stride=2, padding='VALID', scope='vox_conv4')
+                net_vox = slim.conv3d(net_vox, 128, kernel_size=3, stride=2, padding='VALID', scope='vox_conv5')
+                net_vox = slim.flatten(net_vox, scope='vox_flatten')
+                
+                net_feat = slim.fully_connected(net_vox, 4096, scope='fc6')
+                net_feat = slim.fully_connected(net_feat, 4096, scope='fc7')
                 logits = slim.fully_connected(net_feat, self.FLAGS.action_num, activation_fn=None, normalizer_fn=None, scope='fc8')
                 values = slim.fully_connected(net_feat, 1, activation_fn=None, normalizer_fn=None, scope='fc8_value')
 
@@ -179,7 +234,7 @@ class ActiveMVnet(object):
             debug = False
             with tf.variable_scope(scope_name, reuse = reuse):
                 return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, bn_trainmode=self.is_training, 
-                    return_logits = True, debug = debug)
+                    freeze_decoder=not trainable, return_logits = True, debug = debug)
         elif self.FLAGS.unet_name == 'OUTLINE':
             return vox_feat, tf.zeros_like(vox_feat)
         else:
@@ -268,46 +323,46 @@ class ActiveMVnet(object):
             )
 
             
-            #vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
-            #vox_pred_first, vox_logits_first = self._create_unet3d(
-            #    vox_feat_unstack[0],
-            #    channels=self.FLAGS.agg_channels,
-            #    trainable=True,
-            #    if_bn=self.FLAGS.if_bn,
-            #    scope_name='unet_3d'
-            #)
-
-            #unet_3d_reuse = lambda x: self._create_unet3d(
-            #    x,
-            #    channels=self.FLAGS.agg_channels,
-            #    trainable=True,
-            #    if_bn=self.FLAGS.if_bn,
-            #    reuse=True,
-            #    scope_name='unet_3d'
-            #)
-            #unet_3d_reuse_test = lambda x: self._create_unet3d(
-            #    x,
-            #    channels=self.FLAGS.agg_channels,
-            #    trainable=False,
-            #    if_bn=self.FLAGS.if_bn,
-            #    reuse=True,
-            #    scope_name='unet_3d'
-            #)
-            #vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
-            #self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
-            #self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
-
-            self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
-            self.vox_pred, vox_logits = self._create_unet3d(
-                self.vox_feat,
+            vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
+            vox_pred_first, vox_logits_first = self._create_unet3d(
+                vox_feat_unstack[0],
                 channels=self.FLAGS.agg_channels,
                 trainable=True,
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
             )
 
-            self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
-            self.vox_list_pred = uncollapse_dims(self.vox_pred, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            unet_3d_reuse = lambda x: self._create_unet3d(
+                x,
+                channels=self.FLAGS.agg_channels,
+                trainable=True,
+                if_bn=self.FLAGS.if_bn,
+                reuse=True,
+                scope_name='unet_3d'
+            )
+            unet_3d_reuse_test = lambda x: self._create_unet3d(
+                x,
+                channels=self.FLAGS.agg_channels,
+                trainable=False,
+                if_bn=self.FLAGS.if_bn,
+                reuse=True,
+                scope_name='unet_3d'
+            )
+            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
+            self.vox_list_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
+            self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
+
+            #self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
+            #self.vox_pred, vox_logits = self._create_unet3d(
+            #    self.vox_feat,
+            #    channels=self.FLAGS.agg_channels,
+            #    trainable=True,
+            #    if_bn=self.FLAGS.if_bn,
+            #    scope_name='unet_3d'
+            #)
+
+            #self.vox_list_logits = uncollapse_dims(vox_logits, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
+            #self.vox_list_pred = uncollapse_dims(self.vox_pred, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             
             ## --------------- train -------------------
             ## --------------- test  -------------------
@@ -320,26 +375,26 @@ class ActiveMVnet(object):
                 scope_name='aggr_64'
             )
 
-            #vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
+            vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
 
-            #vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
-            #    dtype=(tf.float32, tf.float32))
+            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
+                dtype=(tf.float32, tf.float32))
 
-            #self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
-            #self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
-            #self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
+            self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
+            self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
+            self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
             
-            self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
-            self.vox_pred_test, vox_test_logits = self._create_unet3d(
-                self.vox_feat_test,
-                channels=self.FLAGS.agg_channels,
-                if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE,
-                scope_name='unet_3d'
-            )
-            
-            self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
-            self.vox_list_test_pred = uncollapse_dims(self.vox_pred_test, 1, self.FLAGS.max_episode_length)
+            #self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
+            #self.vox_pred_test, vox_test_logits = self._create_unet3d(
+            #    self.vox_feat_test,
+            #    channels=self.FLAGS.agg_channels,
+            #    if_bn=self.FLAGS.if_bn,
+            #    reuse=tf.AUTO_REUSE,
+            #    scope_name='unet_3d'
+            #)
+            #
+            #self.vox_list_test_logits = uncollapse_dims(vox_test_logits, 1, self.FLAGS.max_episode_length)
+            #self.vox_list_test_pred = uncollapse_dims(self.vox_pred_test, 1, self.FLAGS.max_episode_length)
             ## --------------- test  -------------------
             
         if self.FLAGS.debug_mode:
@@ -361,17 +416,22 @@ class ActiveMVnet(object):
             self.RGB_use_batch = collapse_dims(self.RGB_list_batch_norm)
             self.vox_feat_use = collapse_dims(self.vox_feat_list)
             
-            self.action_prob, _, self.state_values = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
-                trainable=True, if_bn=self.FLAGS.if_bn, scope_name='dqn_two_stream')
+            if self.FLAGS.dqn_use_rgb:
+                self.action_prob, _, self.state_values = self._create_dqn_two_stream(self.RGB_use_batch, self.vox_feat_use,
+                    trainable=True, if_bn=self.FLAGS.if_dqn_bn, scope_name='dqn_two_stream')
+            else:
+                self.action_prob, _, self.state_values = self._create_dqn(self.vox_feat_use, trainable=True,
+                    if_bn=self.FLAGS.if_dqn_bn, scope_name='dqn_vox_only')
             self.action_prob = uncollapse_dims(self.action_prob, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             self.action_prob = tf.stack(tf.unstack(self.action_prob, axis=1)[:-1], axis=1)
             self.action_prob = collapse_dims(self.action_prob)
             self.state_values = uncollapse_dims(self.state_values, self.FLAGS.batch_size, self.FLAGS.max_episode_length)
             self.value_batch = tf.stack(tf.unstack(self.state_values, axis=1)[:-1], axis=1)
+            self.value_last_batch = tf.unstack(self.state_values, axis=1)[-1]
             self.value_batch = collapse_dims(self.value_batch)
             self.value_next_batch = tf.stack(tf.unstack(self.state_values, axis=1)[1:], axis=1)
-            self.value_next_batch = tf.stop_gradient(tf.identity(self.value_next_batch))
-            self.value_next_batch = collapse_dims(self.value_next_batch)
+            #self.value_next_batch = tf.identity(self.value_next_batch))
+            self.value_next_batch = tf.stop_gradient(collapse_dims(self.value_next_batch))
             ### TODO:BATCH NORM ON TIME SEQ
 
             ### TODO:BATCH NORM ON EACH TIME STEP
@@ -400,8 +460,12 @@ class ActiveMVnet(object):
             ## collapse input for easy inference instead of inference multiple times
             self.RGB_use_test = collapse_dims(self.RGB_list_test_norm)
             self.vox_feat_test_use = collapse_dims(self.vox_feat_list_test)
-            self.action_prob_test, _, self.state_values_test = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
-                trainable=False, if_bn=self.FLAGS.if_bn, reuse=True, scope_name='dqn_two_stream')
+            if self.FLAGS.dqn_use_rgb:
+                self.action_prob_test, _, self.state_values_test = self._create_dqn_two_stream(self.RGB_use_test, self.vox_feat_test_use,
+                    trainable=False, if_bn=self.FLAGS.if_dqn_bn, reuse=True, scope_name='dqn_two_stream')
+            else:
+                self.action_prob_test, _, self.state_values_test = self._create_dqn(self.vox_feat_test_use,
+                    trainable=False, if_bn=self.FLAGS.if_dqn_bn, reuse=True, scope_name='dqn_vox_only')
             self.action_prob_test = uncollapse_dims(self.action_prob_test, 1, self.FLAGS.max_episode_length)
             self.action_prob_test = tf.stack(tf.unstack(self.action_prob_test, axis=1)[:-1], axis=1)
             self.action_prob_test = collapse_dims(self.action_prob_test)
@@ -424,12 +488,14 @@ class ActiveMVnet(object):
         if not self.FLAGS.use_coef:
             recon_loss_mat = tf.nn.sigmoid_cross_entropy_with_logits(
                 labels=self.rotated_vox_list_batch, 
+                #labels=self.vox_list_batch, 
                 logits=self.vox_list_logits,
                 name='recon_loss_mat',
             )
         else:
             recon_loss_mat = tf.nn.weighted_cross_entropy_with_logits(
                 targets=self.rotated_vox_list_batch, 
+                #targets=self.vox_list_batch, 
                 logits=self.vox_list_logits,
                 pos_weight=self.FLAGS.loss_coef,
                 name='recon_loss_mat',
@@ -454,8 +520,8 @@ class ActiveMVnet(object):
             vox_collapse_gt = collapse_dims(vox_list_gt)
 
             def compute_IoU_single(vox_pred, vox_gt, thres):
-                pred_ = tf.greater_equal(vox_pred, 0.5*tf.ones_like(vox_pred, dtype=tf.float32))
-                gt_ = tf.greater_equal(vox_gt, 0.5*tf.ones_like(vox_gt, dtype=tf.float32))
+                pred_ = tf.greater(vox_pred, thres*tf.ones_like(vox_pred, dtype=tf.float32))
+                gt_ = tf.greater(vox_gt, thres*tf.ones_like(vox_gt, dtype=tf.float32))
 
                 inter = tf.cast(tf.logical_and(pred_, gt_), dtype=tf.float32)
                 union = tf.cast(tf.logical_or(pred_, gt_), dtype=tf.float32)
@@ -476,13 +542,15 @@ class ActiveMVnet(object):
 
         if not self.FLAGS.use_coef:
             recon_loss_mat_test = tf.nn.sigmoid_cross_entropy_with_logits(
-                labels=self.rotated_vox_list_test, 
+                #labels=self.rotated_vox_list_test, 
+                labels=self.vox_list_test, 
                 logits=self.vox_list_test_logits,
                 name='recon_loss_mat',
             )
         else:
             recon_loss_mat_test = tf.nn.weighted_cross_entropy_with_logits(
-                targets=self.rotated_vox_list_test, 
+                #targets=self.rotated_vox_list_test, 
+                targets=self.vox_list_test, 
                 logits=self.vox_list_test_logits,
                 pos_weight=self.FLAGS.loss_coef,
                 name='recon_loss_mat',
@@ -495,16 +563,17 @@ class ActiveMVnet(object):
         )
         
         self.recon_loss_test = tf.reduce_sum(self.recon_loss_list_test, name='recon_loss_test')
-        IoU_collapse_test = compute_IoU(self.vox_list_test_pred, self.rotated_vox_list_test, thres=self.FLAGS.iou_thres,
+        IoU_collapse_test = compute_IoU(self.vox_pred_test[None, ..., None], self.rotated_vox_list_test, thres=self.FLAGS.iou_thres,
             iou_name='test')
         self.IoU_list_test = uncollapse_dims(IoU_collapse_test, 1, self.FLAGS.max_episode_length)
         ## --------------- test  -------------------
 
 
-        def process_loss_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
+        def process_loss_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name='',
             reward_weight=10, penalty_weight=0.0005):
             
             reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:] ## loss should be gradually decreasing
+            #reward_raw_batch = -loss_list_batch[:, 1:] ## loss should be gradually decreasing
             penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
@@ -522,7 +591,7 @@ class ActiveMVnet(object):
                     reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
                         reward_batch_list[:,i+1:]])
 
-            return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
+            return reward_batch_list, reward_raw_batch
         
         def process_iou_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name=None,
             reward_weight=10, penalty_weight=0.0005):
@@ -544,7 +613,7 @@ class ActiveMVnet(object):
                     reward_batch_list = tf.concat(axis=1, values=[reward_batch_list[:, :i], update_r,
                         reward_batch_list[:,i+1:]])
 
-            return reward_weight*reward_batch_list, reward_weight*reward_raw_batch
+            return reward_batch_list, reward_raw_batch
 
         if self.FLAGS.reward_type == 'IG':
             self.reward_batch_list, self.reward_raw_batch = process_loss_to_reward(
@@ -591,7 +660,7 @@ class ActiveMVnet(object):
             
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
-        self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + self.action_batch
+        self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + tf.reshape(self.action_batch, [-1])
         self.responsible_action = tf.gather(tf.reshape(self.action_prob, [-1]), self.indexes)
         #print(self.action_prob.get_shape().as_list())
         #print(self.action_list_batch.get_shape().as_list())
@@ -599,7 +668,9 @@ class ActiveMVnet(object):
         #print(tf.reshape(self.action_prob, [-1]).get_shape().as_list())
         #print(self.indexes.get_shape().as_list())
         ## reward_batch node should not back propagate
-        self.reward_batch = tf.stop_gradient(tf.identity(collapse_dims(self.reward_batch_list)), name='reward_batch')
+        #self.reward_batch = tf.stop_gradient(tf.identity(collapse_dims(self.reward_batch_list)), name='reward_batch')
+        self.reward_batch = tf.stop_gradient(collapse_dims(self.reward_batch_list), name='reward_batch')
+        self.reward_batch_raw = collapse_dims(self.reward_raw_batch)
         #print(self.reward_batch_list.get_shape().as_list())
         #print(self.reward_batch.get_shape().as_list())
         #print(self.responsible_action.get_shape().as_list())
@@ -607,13 +678,17 @@ class ActiveMVnet(object):
         #self.reward_batch = collapse_dims(self.reward_batch_list)
         #debug_reward = tf.where(self.reward_batch>0, tf.ones_like(self.reward_batch),
         #    -1*tf.ones_like(self.reward_batch))
-        self.critic_loss = tf.reduce_sum(tf.norm(self.value_batch-self.reward_batch-self.FLAGS.gamma*self.value_next_batch), \
-            name='critic_loss')
+        self.critic_loss = \
+            tf.reduce_mean(tf.norm(self.value_batch-self.reward_batch-self.FLAGS.gamma*self.value_next_batch)) \
+            + tf.reduce_mean(tf.norm(self.value_last_batch))
+
         self.advantage_batch = self.reward_batch - self.value_batch
-        #self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.reward_batch, name='reinforce_loss')
-        self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.advantage_batch, name='reinforce_loss')
+        self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-20, 1))*self.reward_batch, name='reinforce_loss')
+        self.loss_reinforce_recon = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-20, 1))*
+            self.reward_batch_raw, name='reinforce_recon_loss')
+        #self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*self.advantage_batch, name='reinforce_loss')
         #self.loss_reinforce = -tf.reduce_mean(tf.log(tf.clip_by_value(self.responsible_action, 1e-10, 1))*debug_reward, name='reinforce_loss')
-        self.loss_act_regu = tf.reduce_sum(self.action_prob*tf.log(self.action_prob))  
+        self.loss_act_regu = tf.reduce_sum(self.responsible_action*tf.log(tf.clip_by_value(self.responsible_action, 1e-20, 1)))  
 
     def _create_optimizer(self):
        
@@ -632,7 +707,8 @@ class ActiveMVnet(object):
         elif self.FLAGS.optimizer == 'adam':
             self.optimizer = tf.train.AdamOptimizer(self.learning_rate)
             self.optimizer_burnin = tf.train.AdamOptimizer(self.learning_rate)
-            self.optimizer_critic = tf.train.AdamOptimizer(self.learning_rate)
+            self.optimizer_critic = tf.train.AdamOptimizer(self.learning_rate*10)
+            self.optimizer_reinforce = tf.train.AdamOptimizer(self.learning_rate*self.FLAGS.reward_weight)
 
         #self.update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 
@@ -656,32 +732,33 @@ class ActiveMVnet(object):
         #    var_list=aggr_var+dqn_var+unet_var)
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
         self.opt_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+            variables_to_train=aggr_var+unet_var)
         self.opt_recon_last = slim.learning.create_train_op(self.recon_loss_last, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+            variables_to_train=aggr_var+unet_var)
         self.opt_recon_first = slim.learning.create_train_op(self.recon_loss_first, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var, clip_gradient_norm=10)
+            variables_to_train=aggr_var+unet_var)
         #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
         #    variables_to_train=aggr_var+dqn_var)
         #self.opt_reinforce = z
         self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-            optimizer=self.optimizer, variables_to_train=aggr_var+dqn_var, clip_gradient_norm=30)
+            optimizer=self.optimizer_reinforce, clip_gradient_norm=5, variables_to_train=dqn_var)
         self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
-            variables_to_train=dqn_var, clip_gradient_norm=30)
-        self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss+self.loss_reinforce
-            +self.FLAGS.reg_act*self.loss_act_regu, optimizer=self.optimizer,
-            variables_to_train=aggr_var+dqn_var+unet_var, clip_gradient_norm=30)
+            variables_to_train=dqn_var)
+        self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
+            variables_to_train=aggr_var+unet_var)
+        self.opt_recon_unet = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
+            variables_to_train=unet_var)
 
     def _create_summary(self):
-        if self.FLAGS.is_training:
-            self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
-            self.summary_loss_recon_train = tf.summary.scalar('train/loss_recon',
-                self.recon_loss/(self.FLAGS.max_episode_length*self.FLAGS.batch_size))
-            self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
-            self.summary_loss_act_regu_train = tf.summary.scalar('train/loss_act_regu', self.loss_act_regu)
-            self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
-            self.summary_critic_loss_train = tf.summary.scalar('train/critic_loss', self.critic_loss)
-            self.merged_train = tf.summary.merge_all()
+        #if self.FLAGS.is_training:
+        self.summary_learning_rate = tf.summary.scalar('train/learning_rate', self.learning_rate)
+        self.summary_loss_recon_train = tf.summary.scalar('train/loss_recon',
+            self.recon_loss/(self.FLAGS.max_episode_length*self.FLAGS.batch_size))
+        self.summary_loss_reinforce_train = tf.summary.scalar('train/loss_reinforce', self.loss_reinforce)
+        self.summary_loss_act_regu_train = tf.summary.scalar('train/loss_act_regu', self.loss_act_regu)
+        self.summary_reward_batch_train = tf.summary.scalar('train/reward_batch', tf.reduce_sum(self.reward_batch))
+        self.summary_critic_loss_train = tf.summary.scalar('train/critic_loss', self.critic_loss)
+        self.merged_train = tf.summary.merge_all()
 
     def _create_collections(self):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
@@ -706,12 +783,18 @@ class ActiveMVnet(object):
             burnin_list = basic_list[:] + ['opt_recon_last', 'recon_loss_last']
         elif self.FLAGS.burin_opt == 2:
             burnin_list = basic_list[:] + ['opt_recon_first', 'recon_loss_first']
-        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'critic_loss', 'opt_critic']
-        train_mvnet_list = burnin_list[:] + ['merged_train']
+        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'opt_reinforce',
+            'action_list_batch', 'IoU_list_batch']
+        train_mvnet_list = basic_list[:] + ['opt_recon_last', 'merged_train']
+        train_dqn_list = basic_list[:] + ['opt_reinforce', 'opt_recon_unet', 'loss_act_regu', 'merged_train']
+        train_dqn_only_list = basic_list[:] + ['opt_reinforce', 'loss_act_regu', 'merged_train', 'action_list_batch',
+            'IoU_list_batch', 'indexes', 'responsible_action']
 
         self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
         self.train_collection = dict2obj(dct_from_keys(train_list))
         self.train_mvnet_collection = dict2obj(dct_from_keys(train_mvnet_list))
+        self.train_dqn_collection = dict2obj(dct_from_keys(train_dqn_list))
+        self.train_dqn_only_collection = dict2obj(dct_from_keys(train_dqn_only_list))
             
     def get_placeholders(self, include_vox, include_action, include_penalty, train_mode):
         
@@ -794,9 +877,9 @@ class ActiveMVnet(object):
             print(a_idx)
         else:           ## testing
             print(action_prob)
-            #a_response = np.random.choice(action_prob, p=action_prob)
+            a_response = np.random.choice(action_prob, p=action_prob)
 
-            a_idx = np.argmax(action_prob)
+            a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
         return a_idx
 
@@ -819,6 +902,10 @@ class ActiveMVnet(object):
             collection_to_run = self.train_collection
         elif mode == 'train_mv':
             collection_to_run = self.train_mvnet_collection
+        elif mode == 'train_dqn':
+            collection_to_run = self.train_dqn_collection
+        elif mode == 'train_dqn_only':
+            collection_to_run = self.train_dqn_only_collection
 
         return self.run_collection_with_fd(collection_to_run, feed_dict)
 

@@ -39,6 +39,7 @@ class ActiveMVnet2D(object):
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
+        self.pretrain_saver = tf.train.Saver(max_to_keep=None)
         
         # create a sess
         config = tf.ConfigProto()
@@ -187,11 +188,11 @@ class ActiveMVnet2D(object):
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
 
-                net_down1 = slim.conv2d(rgb, 16, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv1')
-                net_down2 = slim.conv2d(net_down1, 32, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv2')
-                net_down3 = slim.conv2d(net_down2, 32, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv3')
-                net_down4 = slim.conv2d(net_down3, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv4')
-                net_bottleneck = slim.conv2d(net_down4, 128, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv5')
+                net_down1 = slim.conv2d(rgb, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv1')
+                net_down2 = slim.conv2d(net_down1, 128, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv2')
+                net_down3 = slim.conv2d(net_down2, 128, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv3')
+                net_down4 = slim.conv2d(net_down3, 256, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv4')
+                net_bottleneck = slim.conv2d(net_down4, 256, kernel_size=[4,4], stride=[2,2], padding='SAME', scope='ae_conv5')
 
         return net_bottleneck
     
@@ -220,20 +221,26 @@ class ActiveMVnet2D(object):
                 weights_regularizer = None
 
 
-            with slim.arg_scope([slim.fully_connected],
+            with slim.arg_scope([slim.fully_connected, slim.conv3d_transpose],
                     activation_fn=self.activation_fn,
                     trainable=trainable,
                     normalizer_fn=batch_normalizer_gen,
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
 
-                net_up3 = slim.conv3d_transpose(z_rgb, 128, kernel_size=4, stride=2, padding='SAME', \
+                net_up5 = slim.conv3d_transpose(z_rgb, 256, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv6')
-                net_up2 = slim.conv3d_transpose(net_up3, 64, kernel_size=4, stride=2, padding='SAME', \
+                net_up4 = slim.conv3d_transpose(net_up5, 256, kernel_size=3, stride=1, padding='SAME', \
                     scope='unet_deconv5')
-                net_up1 = slim.conv3d_transpose(net_up2, 32, kernel_size=4, stride=2, padding='SAME', \
+                net_up3 = slim.conv3d_transpose(net_up4, 128, kernel_size=4, stride=2, padding='SAME', \
                     scope='unet_deconv4')
-                net_out_ = slim.conv3d_transpose(net_up1, out_channel, kernel_size=4, stride=2, padding='SAME', \
+                net_up2 = slim.conv3d_transpose(net_up3, 128, kernel_size=3, stride=1, padding='SAME', \
+                    scope='unet_deconv3')
+                net_up1 = slim.conv3d_transpose(net_up2, 64, kernel_size=4, stride=2, padding='SAME', \
+                    scope='unet_deconv2')
+                net_up0 = slim.conv3d_transpose(net_up1, 64, kernel_size=3, stride=1, padding='SAME', \
+                    scope='unet_deconv1')
+                net_out_ = slim.conv3d_transpose(net_up0, out_channel, kernel_size=4, stride=2, padding='SAME', \
                     activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
 
         return tf.nn.sigmoid(net_out_), net_out_
@@ -315,8 +322,8 @@ class ActiveMVnet2D(object):
                     normalizer_fn=batch_normalizer_gen,
                     normalizer_params=batch_norm_params_gen,
                     weights_regularizer=weights_regularizer):
-                net_feat = slim.fully_connected(feat, 128, scope='fc1')
-                net_feat = slim.fully_connected(feat, channels, scope='fc2')
+                net_feat = slim.fully_connected(feat, 4096, scope='fc1')
+                net_feat = slim.fully_connected(feat, 4096, scope='fc2')
 
             return net_feat
 
@@ -335,18 +342,30 @@ class ActiveMVnet2D(object):
             ## TODO: create features using RGB batch
             ## --------------- train -------------------
             RGB_list_norm = tf.unstack(self.RGB_list_batch_norm, axis=1) 
+            invZ_list_batch = tf.unstack(self.invZ_list_batch, axis=1)
 
             rgb_feat_first = self._create_encoder_2d(RGB_list_norm[0], if_bn=self.FLAGS.if_bn,
                 scope_name='encoder_rgb_2d')
+            invZ_feat_first = self._create_encoder_2d(invZ_list_batch[0], if_bn=self.FLAGS.if_bn,
+                scope_name='encoder_invZ_2d')
             rgb_feat_first = tf.reshape(rgb_feat_first, [self.FLAGS.batch_size, -1])
+            invZ_feat_first = tf.reshape(invZ_feat_first, [self.FLAGS.batch_size, -1])
 
-            encoder_rgb_reuse = lambda x: self._create_encoder_2d(x, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE,
+            encoder_rgb_reuse = lambda x: self._create_encoder_2d(x, if_bn=self.FLAGS.if_bn, reuse=True,
                 scope_name='encoder_rgb_2d')
-            encoder_rgb_reuse_test = lambda x: self._create_encoder_2d(x, trainable=False, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE,
+            encoder_rgb_reuse_test = lambda x: self._create_encoder_2d(x, trainable=False, if_bn=self.FLAGS.if_bn, reuse=True,
                 scope_name='encoder_rgb_2d')
+            encoder_invZ_reuse = lambda x: self._create_encoder_2d(x, if_bn=self.FLAGS.if_bn, reuse=True,
+                scope_name='encoder_invZ_2d')
+            encoder_invZ_reuse_test = lambda x: self._create_encoder_2d(x, trainable=False, if_bn=self.FLAGS.if_bn,
+                reuse=True, scope_name='encoder_invZ_2d')
             rgb_feat_follow = tf.map_fn(encoder_rgb_reuse, tf.stack(RGB_list_norm[1:]))
             rgb_feat_follow = tf.reshape(rgb_feat_follow, [self.FLAGS.max_episode_length-1, self.FLAGS.batch_size, -1])
+            invZ_feat_follow = tf.map_fn(encoder_invZ_reuse, tf.stack(invZ_list_batch[1:]))
+            invZ_feat_follow = tf.reshape(invZ_feat_follow, [self.FLAGS.max_episode_length-1, self.FLAGS.batch_size, -1])
             self.rgb_feat = tf.stack([rgb_feat_first]+tf.unstack(rgb_feat_follow), axis=1) 
+            self.invZ_feat = tf.stack([invZ_feat_first]+tf.unstack(invZ_feat_follow), axis=1)
+            self.rgbd_feat = tf.concat([self.rgb_feat, self.invZ_feat], axis=-1)
             ## --------------- train -------------------
             ## --------------- test  -------------------
             RGB_list_norm_test = tf.unstack(self.RGB_list_test_norm, axis=1)
@@ -354,26 +373,34 @@ class ActiveMVnet2D(object):
             rgb_feat_test_all = tf.map_fn(encoder_rgb_reuse_test, tf.stack(self.RGB_list_test_norm))
             self.rgb_feat_test = tf.stack(tf.unstack(rgb_feat_test_all), axis=1)
             self.rgb_feat_test = tf.reshape(self.rgb_feat_test, [1, self.FLAGS.max_episode_length, -1])
+            invZ_feat_test_all = tf.map_fn(encoder_invZ_reuse_test, tf.stack(self.invZ_list_test))
+            self.invZ_feat_test = tf.stack(tf.unstack(invZ_feat_test_all), axis=1)
+            self.invZ_feat_test = tf.reshape(self.invZ_feat_test, [1, self.FLAGS.max_episode_length, -1])
+            self.rgbd_feat_test = tf.concat([self.rgb_feat_test, self.invZ_feat_test], axis=-1)
             ## --------------- test  -------------------
                 
             ## TODO: aggregate on feat using fuse and aggr
             ## --------------- train -------------------
-            feat_fuse_first = self._create_fuser(rgb_feat_first, trainable=True, if_bn=self.FLAGS.if_bn,
+            #feat_fuse_first = self._create_fuser(rgb_feat_first, trainable=True, if_bn=self.FLAGS.if_bn,
+            #    scope_name='fuse_feat') 
+            feat_fuse_first = self._create_fuser(self.rgbd_feat[0], trainable=True, if_bn=self.FLAGS.if_bn,
                 scope_name='fuse_feat') 
-            fuser_reuse = lambda x: self._create_fuser(x, trainable=True, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE,
+            fuser_reuse = lambda x: self._create_fuser(x, trainable=True, if_bn=self.FLAGS.if_bn, reuse=True,
                 scope_name='fuse_feat')
-            fuser_reuse_test = lambda x: self._create_fuser(x, trainable=False, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE,
+            fuser_reuse_test = lambda x: self._create_fuser(x, trainable=False, if_bn=self.FLAGS.if_bn, reuse=True,
                 scope_name='fuse_feat')
-            feat_fuse_follow = tf.map_fn(fuser_reuse, rgb_feat_follow)
+            #feat_fuse_follow = tf.map_fn(fuser_reuse, rgb_feat_follow)
+            feat_fuse_follow = tf.map_fn(fuser_reuse, self.rgbd_feat[1:])
             self.fuse_feat_list = tf.stack([feat_fuse_first]+tf.unstack(feat_fuse_follow), axis=1) ## [BSxEx4x4xCH]
             self.fuse_feat_list = tf.reshape(self.fuse_feat_list, [self.FLAGS.batch_size, self.FLAGS.max_episode_length, -1])
             self.aggr_feat_list = self._create_aggregator(self.fuse_feat_list, scope_name='aggr') ## [BSxExCH] 
             ## --------------- train -------------------
             ## --------------- test  -------------------
-            self.feat_fuse_test = tf.map_fn(fuser_reuse_test, tf.stack(tf.unstack(self.rgb_feat_test, axis=1)))
+            #self.feat_fuse_test = tf.map_fn(fuser_reuse_test, tf.stack(tf.unstack(self.rgb_feat_test, axis=1)))
+            self.feat_fuse_test = tf.map_fn(fuser_reuse_test, tf.stack(tf.unstack(self.rgbd_feat_test, axis=1)))
             self.feat_fuse_test = tf.stack(tf.unstack(self.feat_fuse_test), axis=1)
             self.feat_fuse_test = tf.reshape(self.feat_fuse_test, [1, self.FLAGS.max_episode_length, -1])
-            self.aggr_feat_list_test = self._create_aggregator(self.feat_fuse_test, trainable=True, reuse=tf.AUTO_REUSE,
+            self.aggr_feat_list_test = self._create_aggregator(self.feat_fuse_test, trainable=True, reuse=True,
                 scope_name='aggr')
             ## --------------- test  -------------------
 
@@ -385,9 +412,9 @@ class ActiveMVnet2D(object):
             vox_pred_first, vox_logits_first = self._create_decoder_3d(aggr_feat_list_[0], trainable=True, if_bn=self.FLAGS.if_bn,
                 scope_name='decoder_3d')
             decoder_reuse = lambda x: self._create_decoder_3d(x, trainable=True, if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE, scope_name='decoder_3d')
+                reuse=True, scope_name='decoder_3d')
             decoder_reuse_test = lambda x: self._create_decoder_3d(x, trainable=False, if_bn=self.FLAGS.if_bn,
-                reuse=tf.AUTO_REUSE, scope_name='decoder_3d')
+                reuse=True, scope_name='decoder_3d')
             vox_pred_follow, vox_logits_follow = tf.map_fn(decoder_reuse, tf.stack(aggr_feat_list_[1:]),
                 dtype=(tf.float32, tf.float32))
             self.vox_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
@@ -433,7 +460,7 @@ class ActiveMVnet2D(object):
             self.RGB_use_test = collapse_dims(self.RGB_list_test_norm_use)
             self.aggr_feat_test_use = collapse_dims(self.aggr_feat_list_use_test)
             self.action_prob_test, _ = self._create_dqn_two_stream(self.RGB_use_test, self.aggr_feat_test_use,
-                trainable=False, if_bn=self.FLAGS.if_bn, reuse=tf.AUTO_REUSE, scope_name='dqn_two_stream')
+                trainable=False, if_bn=self.FLAGS.if_bn, reuse=True, scope_name='dqn_two_stream')
             ## --------------- test  -------------------
             ### TODO: debug
             #sys.exit()

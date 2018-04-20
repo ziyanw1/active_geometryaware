@@ -6,6 +6,8 @@ from models.active_mvnet import MVInputs, SingleInput, SingleInputFactory
 import numpy as np
 from replay_memory import trajectData
 
+np.random.seed(1024)
+
 class Rollout(object):
     def __init__(self, agent, env, memory, FLAGS):
         self.agent = agent
@@ -34,12 +36,21 @@ class Rollout(object):
 
             tic = time.time()
             if mode == 'active':
-                agent_action = self.agent.select_action(mvnet_input, e_idx-1, is_training=is_train)
+                if np.random.uniform(0, 1) < self.FLAGS.epsilon:
+                    probs = [1.0/8]*8
+                    agent_action = np.random.choice(self.env.action_space_n, p=probs)
+                else:
+                    agent_action = self.agent.select_action(mvnet_input, e_idx-1, is_training=is_train)
             elif mode == 'random':
                 probs = [1.0/8]*8
                 agent_action = np.random.choice(self.env.action_space_n, p=probs)
+            elif mode == 'nolimit':
+                agent_action = 0
             actions.append(agent_action)
-            state, next_state, done, model_id = self.env.step(actions[-1])
+            if mode is not 'nolimit':
+                state, next_state, done, model_id = self.env.step(actions[-1])
+            else:
+                state, next_state, done, model_id = self.env.step(actions[-1], nolimit=True)
             
             mvnet_input.put(self.single_input_for_state(next_state), episode_idx = e_idx)
 

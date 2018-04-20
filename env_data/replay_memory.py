@@ -20,6 +20,8 @@ sys.path.append(os.path.join('utils'))
 from util import downsample
 import binvox_rw
 
+np.random.seed(1024)
+
 cat_name = {
     "02691156" : "airplane",
     # "02828884",
@@ -197,7 +199,7 @@ class ReplayMemory():
         #print vox_next_batch.shape
         #print vox_gt_batch.shape
 
-        if self.FLAGS.reward_type == 'IoU':
+        if self.FLAGS.reward_type == 'oU':
             calu_r_func = self.calu_IoU_reward
         elif self.FLAGS.reward_type == 'IG':
             calu_r_func = self.calu_IG_reward
@@ -213,14 +215,14 @@ class ReplayMemory():
 
         return (IoU_next - IoU_curr)*100
     
-    def calu_IoU(self, a, b):
+    def calu_IoU(self, a, b, thres=0.5):
         ## do threshold filtering as there are interpolated values
         aa = np.copy(a)
         bb = np.copy(b)
-        aa[a >= 0.5] = 1
-        aa[a < 0.5] = 0
-        bb[b >= 0.5] = 1
-        bb[b < 0.5] = 0
+        aa[a > thres] = 1
+        aa[a <= thres] = 0
+        bb[b > thres] = 1
+        bb[b <= thres] = 0
 
         inter = aa*bb
         sum_inter = np.sum(inter[:])
@@ -373,7 +375,8 @@ class ReplayMemory():
         
     def _get_batch_list(self, batch_size=4):
         mvinputs = MVInputs(self.FLAGS, batch_size = batch_size)
-
+        
+        #batch_idx = np.random.choice(self.upper_bound(), batch_size, replace=False)
         for b_idx in range(batch_size):
             rand_idx = np.random.randint(0, self.upper_bound())
             data_ = self.mem_list[rand_idx]

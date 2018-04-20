@@ -4,6 +4,8 @@ import numpy as np
 import scipy.misc as sm
 import matplotlib.pyplot as plt
 
+np.random.seed(1024)
+
 cat_name = {
     "02691156" : "airplane",
     # "02828884",
@@ -59,8 +61,8 @@ class ShapeNetEnv():
         self.prev_azims = []
         self.prev_elevs = []
         self.test_count = 0
-        self.test_azims = np.random.choice(azim_all, size=(self.test_len, 1))
-        self.test_elevs = np.random.choice(elev_all, size=(self.test_len, 1))
+        self.test_azims = np.random.choice(azim_for_init, size=(self.test_len, 1))
+        self.test_elevs = np.random.choice(elev_for_init, size=(self.test_len, 1))
         self.action_space_n = 8
         self.azim_all = azim_all
         self.elev_all = elev_all
@@ -79,16 +81,23 @@ class ShapeNetEnv():
             #self.current_elev = np.random.choice(elev_all)
             self.current_elev = np.random.choice(elev_for_init)
         else:
-            #rand_idx = np.random.randint(0, self.test_len)
-            t_idx = min(test_idx, self.test_len)
-            self.current_model = self.test_list[t_idx]
+            if self.FLAGS.debug_train:
+                t_idx = min(test_idx, self.train_len)
+                self.current_model = self.trainval_list[t_idx]
+            else:
+                t_idx = min(test_idx, self.test_len)
+                self.current_model = self.test_list[t_idx]
             self.current_azim = self.test_azims[t_idx]
             self.current_elev = self.test_elevs[t_idx]
 
+        if self.FLAGS.debug_single:
+            self.current_model = self.trainval_list[0]
+            self.current_azim = np.random.choice(azim_for_init)
+            self.current_elev = np.random.choice(elev_for_init)
 
         return [[self.current_azim], [self.current_elev]], self.current_model
 
-    def step(self, action):
+    def step(self, action, nolimit=False):
 
         self.prev_azims += [self.current_azim]
         self.prev_elevs += [self.current_elev]
@@ -121,6 +130,10 @@ class ShapeNetEnv():
         #    pass ## camera don't move
         else:
             raise Exception, 'bad action'
+
+        if nolimit:
+            self.current_azim = np.random.choice(azim_all)
+            self.current_elev = np.random.choice(elev_all)
 
         self.step_count += 1
         if self.step_count == self.max_episode_length - 1:
