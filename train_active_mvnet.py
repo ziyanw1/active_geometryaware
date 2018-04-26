@@ -150,9 +150,15 @@ flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('epsilon', 0, 'epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
-flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
+flags.DEFINE_boolean('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
 flags.DEFINE_boolean('GBL_thread', False, '')
+
+flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
+flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
+flags.DEFINE_float('BN_DECAY_DECAY_STEP', -1, '')
+flags.DEFINE_float('BN_DECAY_CLIP', 0.99, '')
+
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -160,11 +166,7 @@ FLAGS = flags.FLAGS
 #    OUTPUTPOINTS = FLAGS.num_point
 #else:
 #    OUTPUTPOINTS = FLAGS.num_point/2
-FLAGS.BN_INIT_DECAY = 0.5
-FLAGS.BN_DECAY_DECAY_RATE = 0.5
 FLAGS.BN_DECAY_DECAY_STEP = float(FLAGS.decay_step)
-FLAGS.BN_DECAY_CLIP = 0.99
-
 
 def prepare_plot():
     plt.figure(1, figsize=(16, 32))
