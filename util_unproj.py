@@ -9,7 +9,8 @@ import time
 
 class Unproject_tools:
     def __init__(self, FLAGS):
-        #########
+        self.FLAGS = FLAGS
+
         other.const = other.constants
         other.const.S = FLAGS.voxel_resolution
         
@@ -32,10 +33,18 @@ class Unproject_tools:
         other.const.force_batchnorm_testmode = False
         other.const.NET3DARCH = 'marr'
         other.const.eps = 1e-6
-    
-        #########
 
+    def add_noise(self, x):
+        #x is in degrees
+        x += tf.random_normal(tf.shape(x), mean = 0.0, stddev = 2.5)
+        return x
+        
     def unproject(self, invZ, mask, additional, azimuth, elevation):
+
+        if self.FLAGS.pose_noise:
+            azimuth = self.add_noise(azimuth)
+            elevation = self.add_noise(elevation)
+        
         depth = 1.0/(invZ+other.const.eps)
         depth *= 2.0
         depth = depth * mask + other.const.DIST_TO_CAM * (1.0-mask)
