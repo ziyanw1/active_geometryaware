@@ -66,6 +66,8 @@ flags.DEFINE_string('task_name', 'tmp', 'task name to create under /LOG_DIR/ [de
 flags.DEFINE_boolean('restore', False, 'If resume from checkpoint')
 flags.DEFINE_integer('restore_iter', 0, '')
 flags.DEFINE_string('ae_file', '', '')
+flags.DEFINE_boolean('pretrain_restore', False, 'If resume from checkpoint')
+flags.DEFINE_string('pretrain_restore_path', 'log_agent/pretrain_models/pretrain_model.ckpt-5', '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
@@ -109,6 +111,7 @@ flags.DEFINE_boolean('random_pretrain', False, 'if random pretrain mvnet')
 flags.DEFINE_integer('burnin_start_iter', 0, '0 [default: 0]')
 flags.DEFINE_float('iou_thres', 0.4, 'Reweight for computing iou [default: 0.5]')
 flags.DEFINE_boolean("debug_train", False, "if save evaluation results")
+flags.DEFINE_integer('burin_opt', 0, '0 for all, 1 for last [default: 0]')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", True, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -217,11 +220,11 @@ def train_log(i, out_stuff, t):
         )
     )
 
-def eval_log(i, out_stuff, iou):
+def eval_log(i, out_stuff, ious):
     reward = np.sum(out_stuff.reward_raw_test)
     losses = out_stuff.recon_loss_list_test
-    log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
-        i, reward, iou, losses))
+    log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {}, Losses: {}------'.format(
+        i, reward, ious, losses))
     
 def train(active_mv):
     
@@ -246,7 +249,7 @@ def train(active_mv):
     rollout_obj = Rollout(active_mv, senv, replay_mem, FLAGS)
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
-        for i in xrange(FLAGS.burn_in_iter):
+        for i in xrange(FLAGS.burnin_start_iter, FLAGS.burnin_start_iter+FLAGS.burn_in_iter):
             rollout_obj.go(i, verbose = True, add_to_mem = True, mode='random', is_train=True)
             if not FLAGS.random_pretrain:
                 replay_mem.enable_gbl()
@@ -356,9 +359,11 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
 
-        
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gt)
-        eval_log(i_idx, pred_out, final_IoU)
+        ious = []
+        for vi in range(FLAGS.max_episode_length):
+            final_IoU = replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), vox_gt)
+            ious.append(final_IoU)
+        eval_log(i_idx, pred_out, ious)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
@@ -469,7 +474,7 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
 
         model_id = rollout_obj.env.current_model
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
-        vox_gt = replay_mem.read_vox(voxel_name)
+        vox_gt = np.squeeze(replay_mem.read_vox(voxel_name))
 
         mvnet_input.put_voxel(vox_gt)
         pred_out = active_mv.predict_vox_list(mvnet_input)
@@ -486,8 +491,13 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             print 'std', np.std(lastpred)
         
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gt, FLAGS.iou_thres)
-        eval_log(i_idx, pred_out, final_IoU)
+        #final_IoU = replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[-1]), vox_gt, FLAGS.iou_thres)
+        ious = []
+        for vi in range(FLAGS.max_episode_length):
+            final_IoU = replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi, ...]), vox_gt, FLAGS.iou_thres)
+            ious.append(final_IoU)
+        eval_log(i_idx, pred_out, ious)
+        #eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
@@ -594,6 +604,12 @@ def save_voxel(vox, pth):
     )
     with open(pth, 'wb') as f:
         binvox_obj.write(f)
+
+def restore_pretrain(ae):
+    restore_path = FLAGS.pretrain_restore_path
+    log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
+    ae.saver.restore(ae.sess, restore_path)
+    log_string(tf_util.toYellow("----- Restored from %s."%restore_path))
         
 if __name__ == "__main__":
     #MODEL = importlib.import_module(FLAGS.model_file) # import network module
@@ -650,6 +666,8 @@ if __name__ == "__main__":
             restore_from_iter(active_mv, FLAGS.restore_iter)
         else:
             restore(active_mv)
+    if FLAGS.pretrain_restore:
+        restore_pretrain(active_mv)
     train(active_mv)
     
     # z_list = []

@@ -92,8 +92,8 @@ class ShapeNetEnv():
 
         if self.FLAGS.debug_single:
             self.current_model = self.trainval_list[0]
-            self.current_azim = np.random.choice(azim_for_init)
-            self.current_elev = np.random.choice(elev_for_init)
+            #self.current_azim = np.random.choice(azim_for_init)
+            #self.current_elev = np.random.choice(elev_for_init)
 
         return [[self.current_azim], [self.current_elev]], self.current_model
 

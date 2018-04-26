@@ -144,6 +144,94 @@
 #     --pretrain_restore_path='log_agent/pretrain_models/MVnet_coef10/pretrain_model.ckpt-20000' \
 #     --burnin_start_iter=20000
 
+## GRU IoU pretrain use only last recon error
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef5_lastrecon_continue' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
+#     --pretrain_restore=True \
+#     --pretrain_restore_path='log_agent/gru_nostop_iou_longermem_ftDQN_coef5_lastrecon/log_agent/pretrain_model.ckpt-5000'
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1_lastrecon' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1_lastrecon_NObn' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 --if_bn=False \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_gamma0_coef1' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=0 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 --if_bn=False \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 --pretrain_restore=True \
+#     --pretrain_restore_path='log_agent/gru_nostop_iou_longermem_ftDQN_coef1_lastrecon_NObn/log_agent/pretrain_model.ckpt-20000' \
+#     --epsilon=0.05 --explore_mode='random'
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_gamma0_coef1_new' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-3 --burn_in_length=10 --burn_in_iter=0 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 --if_bn=False \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 --pretrain_restore=True \
+#     --pretrain_restore_path='log_agent/gru_nostop_iou_longermem_ftDQN_coef1_lastrecon_NObn/log_agent/pretrain_model.ckpt-20000' \
+#     --epsilon=0.05 --explore_mode='random'
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=0 \
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1_lastrecon' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1_lastrecon_lr3e-3' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=3e-3 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
+
+## GRU IoU pretrain use only last recon error ## TODO
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef1_continue' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
+#     --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=0 \
+#     --pretrain_restore=True \
+#     --pretrain_restore_path='log_agent/gru_nostop_iou_longermem_ftDQN_coef1/log_agent/pretrain_model.ckpt-20000'
+
 ## GRU IoU pretrain
 #python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQN_coef10_gamma0' \
 #     --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-4 --burn_in_length=10 --burn_in_iter=10 \
@@ -181,12 +269,30 @@
 #     --pretrain_restore_path='log_agent/pretrain_models/MVnet_coef10/pretrain_model.ckpt-20000'
 
 ## GRU IoU pretrain dqn only
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_coef10_gamma0_noreg' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=0 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=20000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=16 \
+#     --use_coef=True --loss_coef=10 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=50 \
+#     --delta=20.0 --reg_act=0 --penalty_weight=0 --finetune_dqn_only=True --pretrain_restore=True --gamma=0 \
+#     --pretrain_restore_path='log_agent/pretrain_models/MVnet_coef10/pretrain_model.ckpt-20000'
+
+## GRU IoU pretrain dqn only
 #python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_coef5_gamma0' \
 #     --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-4 --burn_in_length=10 --burn_in_iter=0 \
 #     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
 #     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=16 \
 #     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=50 \
 #     --delta=20.0 --reg_act=0.1 --penalty_weight=0 --finetune_dqn_only=True --pretrain_restore=True --gamma=0 \
+#     --pretrain_restore_path='log_agent/pretrain_models/best_model/model.ckpt-18400'
+
+## GRU IoU pretrain dqn only
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_coef5_gamma0_noreg' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-4 --burn_in_length=10 --burn_in_iter=0 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=16 \
+#     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=50 \
+#     --delta=20.0 --reg_act=0 --penalty_weight=0 --finetune_dqn_only=True --pretrain_restore=True --gamma=0 \
 #     --pretrain_restore_path='log_agent/pretrain_models/best_model/model.ckpt-18400'
 
 ## GRU IoU pretrain dqn only
@@ -197,6 +303,15 @@
 #     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=50 \
 #     --delta=20.0 --reg_act=0.1 --penalty_weight=0 --finetune_dqn_only=True --pretrain_restore=True --gamma=0.9 \
 #     --pretrain_restore_path='log_agent/pretrain_models/best_model/model.ckpt-18400'
+
+## GRU IoU pretrain dqn only
+#python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_coef5_gamma1' \
+#     --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-4 --burn_in_length=10 --burn_in_iter=0 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=16 \
+#     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=50 \
+#     --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --pretrain_restore=True --gamma=1 \
+#     --pretrain_restore_path='log_agent/pretrain_models/best_model/model.ckpt-18400' --epsilon=0.05
 
 ## GRU IoU pretrain dqn only
 #python train_active_mvnet.py --is_training=True --task_name='gru_nostop_iou_longermem_ftDQNonly_coef5_gamma0_longer' \
@@ -361,19 +476,51 @@
 
 ## baseline 2d
 #python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d' --random_pretrain=False \
-#     --max_episode_length=4 --reward_type='IG' --learning_rate=1e-5 --burn_in_length=4 --burn_in_iter=20000 \
+#     --max_episode_length=4 --reward_type='IG' --learning_rate=5e-5 --burn_in_length=4 --burn_in_iter=20000 --if_bn=False \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
+#     --use_coef=False --loss_coef=10 --if_save_eval=False --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
+#     --delta=20 --reg_act=0.01
+
+## baseline 2d
+python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_last' --random_pretrain=False \
+     --max_episode_length=4 --reward_type='IoU' --learning_rate=3e-5 --burn_in_length=10 --burn_in_iter=20000 --if_bn=False \
+     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
+     --use_coef=False --loss_coef=10 --if_save_eval=False --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
+     --delta=20 --reg_act=0.01 --burin_opt=1
+
+## baseline 2d
+#python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_last_lr5e-4' --random_pretrain=False \
+#     --max_episode_length=4 --reward_type='IG' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 --if_bn=False \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
+#     --use_coef=False --loss_coef=10 --if_save_eval=False --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
+#     --delta=20 --reg_act=0.01 --burin_opt=1
+
+## baseline 2d
+#python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_lr5e-5' --random_pretrain=False \
+#     --max_episode_length=4 --reward_type='IG' --learning_rate=5e-5 --burn_in_length=4 --burn_in_iter=20000 \
 #     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
 #     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
 #     --use_coef=False --loss_coef=10 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
 #     --delta=20 --reg_act=0.01
 
 ## baseline 2d
-python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_coef5' --random_pretrain=False \
-     --max_episode_length=4 --reward_type='IG' --learning_rate=1e-5 --burn_in_length=4 --burn_in_iter=20000 \
-     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
-     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
-     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
-     --delta=20 --reg_act=0.01
+#python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_lr1e-7' --random_pretrain=False \
+#     --max_episode_length=4 --reward_type='IG' --learning_rate=1e-7 --burn_in_length=4 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
+#     --use_coef=False --loss_coef=10 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=100 \
+#     --delta=20 --reg_act=0.01
+
+## baseline 2d
+#python train_active_mvnet_2d.py --is_training=True --task_name='baseline_2d_coef5' --random_pretrain=False \
+#     --max_episode_length=4 --reward_type='IG' --learning_rate=1e-5 --burn_in_length=4 --burn_in_iter=20000 \
+#     --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+#     --resolution=128 --category='03001627' --unet_name='U_VALID' --agg_name='GRU' --mem_length=8 \
+#     --use_coef=True --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
+#     --delta=20 --reg_act=0.01
 
 ## debug 2d
 #python train_active_mvnet_2d.py --is_training=True --task_name='debug_2d' \

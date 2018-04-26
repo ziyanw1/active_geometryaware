@@ -572,8 +572,8 @@ class ActiveMVnet(object):
         def process_loss_to_reward(loss_list_batch, penalty_list_batch, gamma, max_episode_len, r_name='',
             reward_weight=10, penalty_weight=0.0005):
             
-            reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:] ## loss should be gradually decreasing
-            #reward_raw_batch = -loss_list_batch[:, 1:] ## loss should be gradually decreasing
+            #reward_raw_batch = loss_list_batch[:, :-1]-loss_list_batch[:, 1:] ## loss should be gradually decreasing
+            reward_raw_batch = loss_list_batch[:, 1:] ## loss should be gradually decreasing
             penalty_use_batch = tf.squeeze(penalty_list_batch[:, 1:], axis=-1)
             reward_batch_list = tf.get_variable(name='reward_batch_list_{}'.format(r_name), shape=reward_raw_batch.get_shape(),
                 dtype=tf.float32, initializer=tf.zeros_initializer)
@@ -657,7 +657,7 @@ class ActiveMVnet(object):
             )
         else:
             raise Exception, 'undefined reward type' 
-            
+
         ## create reinforce loss
         self.action_batch = collapse_dims(self.action_list_batch)
         self.indexes = tf.range(0, tf.shape(self.action_prob)[0]) * tf.shape(self.action_prob)[1] + tf.reshape(self.action_batch, [-1])
@@ -741,7 +741,7 @@ class ActiveMVnet(object):
         #    variables_to_train=aggr_var+dqn_var)
         #self.opt_reinforce = z
         self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-            optimizer=self.optimizer_reinforce, clip_gradient_norm=5, variables_to_train=dqn_var)
+            optimizer=self.optimizer_reinforce, clip_gradient_norm=4, variables_to_train=dqn_var)
         self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
             variables_to_train=dqn_var)
         self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
@@ -780,9 +780,9 @@ class ActiveMVnet(object):
         if self.FLAGS.burin_opt == 0:
             burnin_list = basic_list[:] + ['opt_recon', 'critic_loss', 'opt_critic']
         elif self.FLAGS.burin_opt == 1:
-            burnin_list = basic_list[:] + ['opt_recon_last', 'recon_loss_last']
+            burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last']
         elif self.FLAGS.burin_opt == 2:
-            burnin_list = basic_list[:] + ['opt_recon_first', 'recon_loss_first']
+            burnin_list = basic_list[:] + ['opt_recon_first','critic_loss', 'recon_loss_first']
         train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'opt_reinforce',
             'action_list_batch', 'IoU_list_batch']
         train_mvnet_list = basic_list[:] + ['opt_recon_last', 'merged_train']
@@ -876,8 +876,8 @@ class ActiveMVnet(object):
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
         else:           ## testing
-            print(action_prob)
-            a_response = np.random.choice(action_prob, p=action_prob)
+            #print(action_prob)
+            a_response = np.amax(action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
