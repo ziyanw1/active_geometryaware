@@ -475,6 +475,7 @@ def voxel_encoder(inputs, aux, reuse):
 def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
                     freeze_decoder = False, d0 = 16, return_logits = False, debug = False):
 
+    decoder_trainable = not freeze_decoder
     input_size = list(inputs.get_shape())[1]
     if input_size == 128:
         arch = 'marr128'
@@ -493,7 +494,8 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
                        'decay': 0.9,
                        'epsilon': 1e-5,
                        'scale': True,
-                       'updates_collections': None}
+                       'updates_collections': None,
+                       'trainable': decoder_trainable}
 
     with slim.arg_scope([slim.conv3d, slim.conv3d_transpose],
                         activation_fn=tf.nn.relu,
@@ -519,6 +521,8 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
             ksizes = [4, 4, 4, 4] 
             strides = [2, 2, 2, 1] 
             paddings = ['SAME'] * 3 + ['VALID']            
+        #inputs = slim.batch_norm(inputs, decay=0.9, scale=True, epsilon=1e-5,
+        #    updates_collections=None, is_training=bn_trainmode, trainable=decoder_trainable)
 
         net = inputs
 
@@ -552,7 +556,6 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
             ksizes = [4, 4, 4, 4]
             paddings = ['VALID'] + ['SAME'] * 3
 
-        decoder_trainable = not freeze_decoder
 
         skipcons.pop() #we don't want the innermost layer as skipcon
         
@@ -667,7 +670,8 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
                                      'decay': FLAGS.bn_decay,
                                      'epsilon': 1e-5,
                                      'scale': True,
-                                     'updates_collections': None}
+                                     'updates_collections': None,
+                                     'trainable': trainable}
         else:
             batch_normalizer_gen = None
             batch_norm_params_gen = None
@@ -686,9 +690,9 @@ def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, r
                 weights_regularizer=weights_regularizer):
 
             #net_unproj = slim.conv3d(unproj_grids_collap, 16, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv1')
-            net_unproj_first = slim.conv3d(unproj_grids_list[0], 16, kernel_size=3, stride=1, padding='SAME' ,
+            net_unproj_first = slim.conv3d(unproj_grids_list[0], 16, kernel_size=1, stride=1, padding='VALID' ,
                 scope='aggr_conv1_split')
-            conv3d_reuse = lambda x: slim.conv3d(x, 16, kernel_size=3, stride=1, padding='SAME', reuse=tf.AUTO_REUSE,
+            conv3d_reuse = lambda x: slim.conv3d(x, 16, kernel_size=1, stride=1, padding='VALID', reuse=True,
                 scope='aggr_conv1_split')
             net_unproj_follow = tf.unstack(tf.map_fn(conv3d_reuse, tf.stack(unproj_grids_list[1:])), axis=0)
             #net_unproj = slim.conv3d(net_unproj, 64, kernel_size=3, stride=1, padding='SAME', scope='aggr_conv2')
