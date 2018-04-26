@@ -153,7 +153,9 @@ flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_boolean('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
 flags.DEFINE_boolean('GBL_thread', False, '')
-
+#whether to introduce pose noise to the unprojection
+flags.DEFINE_boolean('pose_noise', False, '')
+# some constants i moved inside
 flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_STEP', -1, '')
@@ -433,6 +435,16 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
     eval_r_mean = np.mean(rewards_list)
     eval_IoU_mean = np.mean(IoU_list)
     eval_loss_mean = np.mean(loss_list)
+    eval_r_std = np.std(rewards_list) / len(rewards_list)**0.5
+    eval_IoU_std = np.std(IoU_list) / len(IoU_list)**0.5
+    eval_loss_std = np.std(loss_list) / len(loss_list)**0.5
+
+    print 'eval_r_mean is', eval_r_mean
+    print 'eval_iou_mean is', eval_IoU_mean
+    print 'eval_loss_mean is', eval_loss_mean    
+    print 'eval_r_stderr is', eval_r_std
+    print 'eval_iou_stderr is', eval_IoU_std
+    print 'eval_loss_stderr is', eval_loss_std    
     
     tf_util.save_scalar(train_i, 'eval_mean_reward_{}'.format(mode), eval_r_mean, active_mv.train_writer)
     tf_util.save_scalar(train_i, 'eval_mean_IoU_{}'.format(mode), eval_IoU_mean, active_mv.train_writer)
