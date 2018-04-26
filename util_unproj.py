@@ -36,12 +36,32 @@ class Unproject_tools:
 
     def add_noise(self, x):
         #x is in degrees
-        x += tf.random_normal(tf.shape(x), mean = 0.0, stddev = 2.5)
-        return x
+        COMPOUND = True
+
+        noise_std = 2.5
+        
+        if not COMPOUND:
+            x += tf.random_normal(tf.shape(x), mean = 0.0, stddev = noise_std)
+            return x
+        else:
+            noise = []
+            for i in range(self.FLAGS.max_episode_length):
+                noise.append(
+                    tf.random_normal(
+                        tf.stack([tf.shape(x)[0], 1, 1]),
+                        mean = 0.0,
+                        stddev = noise_std
+                    )
+                )
+                if i > 0:
+                    noise[i] += noise[i-1]
+            noise = tf.concat(noise, axis = 1) #time axis
+            return x + noise
         
     def unproject(self, invZ, mask, additional, azimuth, elevation):
 
         if self.FLAGS.pose_noise:
+            print 'ADDING NOISE TO POSE'
             azimuth = self.add_noise(azimuth)
             elevation = self.add_noise(elevation)
         
