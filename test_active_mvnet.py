@@ -110,11 +110,13 @@ flags.DEFINE_float('loss_coef', 10, 'Coefficient for reconstruction loss [defaul
 flags.DEFINE_float('reward_weight', 10, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('penalty_weight', 0.0005, 'rescale factor for reward value [default: 10]')
 flags.DEFINE_float('reg_act', 0.1, 'Reweight for mat loss [default: 0.1]')
-flags.DEFINE_float('iou_thres', 0.5, 'Reweight for computing iou [default: 0.5]')
+flags.DEFINE_float('iou_thres', 0.4, 'Reweight for computing iou [default: 0.5]')
 flags.DEFINE_boolean('random_pretrain', False, 'if random pretrain mvnet')
 flags.DEFINE_integer('burin_opt', 0, '0: on all, 1: on last, 2: on first [default: 0]')
 flags.DEFINE_boolean('dqn_use_rgb', True, 'use rgb for dqn')
 flags.DEFINE_boolean("debug_train", False, "if save evaluation results")
+flags.DEFINE_boolean('test_random', False, '')
+flags.DEFINE_boolean('test_oneway', False, '')
 # log and drawing (blue)
 flags.DEFINE_boolean("is_training", False, 'training flag')
 flags.DEFINE_boolean("force_delete", False, "force delete old logs")
@@ -142,7 +144,7 @@ flags.DEFINE_integer('burn_in_iter', 10, 'burn in iteration for MVnet')
 flags.DEFINE_string('reward_type', 'IoU', 'reward type: [IoU, IG]')
 flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
-flags.DEFINE_float('epsilon', 0.05, 'epsilon')
+flags.DEFINE_float('epsilon', 0, 'epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
@@ -357,7 +359,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             print 'std', np.std(lastpred)
         
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
-        final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
+        final_IoU = replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[-1]), np.squeeze(vox_gtr))
         eval_log(i_idx, pred_out, final_IoU)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
@@ -398,12 +400,13 @@ def test_random(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     loss_list = []
         
     for i_idx in xrange(test_episode_num):
+        print('======testing on {}/{} model======'.format(i_idx+1, test_episode_num))
         IoU_lists_ = []
         loss_list_ = []
         traj_list = []
         actions_list = []
 
-        for j_idx in xrange(10):
+        for j_idx in xrange(20):
 
             mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode='random', is_train=False)
             #stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
@@ -432,7 +435,7 @@ def test_random(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             
             IoUs = []
             for vi in range(FLAGS.max_episode_length):
-                IoUs.append(replay_mem.calu_IoU(pred_out.vox_pred_test[vi], vox_gtr))
+                IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
             #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
             #eval_log(i_idx, pred_out, final_IoU)
             
@@ -459,6 +462,75 @@ def test_random(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         save_dict = {'IoU_list': IoU_lists_, 'loss_list': loss_list_, 'actions_list': actions_list}
         dump_outputs(save_dict, train_i, i_idx, mode='random')
 
+def test_oneway(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
+    senv = ShapeNetEnv(FLAGS)
+
+    #epsilon = FLAGS.init_eps
+    rewards_list = []
+    IoU_list = []
+    loss_list = []
+        
+    for i_idx in xrange(test_episode_num):
+        print('======testing on {}/{} model======'.format(i_idx+1, test_episode_num))
+        IoU_lists_ = []
+        loss_list_ = []
+        traj_list = []
+        actions_list = []
+
+        mvnet_input, actions = rollout_obj.go(i_idx, verbose = False, add_to_mem = False, mode='oneway', is_train=False)
+        #stop_idx = np.argwhere(np.asarray(actions)==8) ## find stop idx
+        #if stop_idx.size == 0:
+        #    pred_idx = -1
+        #else:
+        #    pred_idx = stop_idx[0, 0]
+
+        model_id = rollout_obj.env.current_model
+        voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
+        vox_gt = replay_mem.read_vox(voxel_name)
+
+        mvnet_input.put_voxel(vox_gt)
+        pred_out = active_mv.predict_vox_list(mvnet_input)
+        
+        vox_gtr = np.squeeze(pred_out.rotated_vox_test)
+
+        PRINT_SUMMARY_STATISTICS = False
+        if PRINT_SUMMARY_STATISTICS:
+            lastpred = pred_out.vox_pred_test[-1]
+            print 'prediction statistics'        
+            print 'min', np.min(lastpred)
+            print 'max', np.max(lastpred)
+            print 'mean', np.mean(lastpred)
+            print 'std', np.std(lastpred)
+        
+        IoUs = []
+        for vi in range(FLAGS.max_episode_length):
+            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
+        #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
+        #eval_log(i_idx, pred_out, final_IoU)
+        
+        #rewards_list.append(np.sum(pred_out.reward_raw_test))
+        IoU_lists_.append(IoUs)
+        loss_list_.append(pred_out.recon_loss_list_test)
+        actions_list.append(actions)
+
+        if FLAGS.if_save_eval:
+            
+            save_dict = {
+                'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'vox_gt': vox_gt,
+                'vox_gtr': vox_gtr,
+                'model_id': model_id,
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
+            }
+
+            dump_outputs_model(save_dict, train_i, i_idx, mode='oneway')
+        IoU_lists_ = np.asarray(IoU_lists_)
+        loss_list_ = np.asarray(loss_list_)
+        actions_list = np.asarray(actions_list)
+        save_dict = {'IoU_list': IoU_lists_, 'loss_list': loss_list_, 'actions_list': actions_list}
+        dump_outputs(save_dict, train_i, i_idx, mode='oneway')
+
 def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     senv = ShapeNetEnv(FLAGS)
 
@@ -468,6 +540,7 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     loss_list_ = []
         
     for i_idx in xrange(test_episode_num):
+        print('======testing on {}/{} model======'.format(i_idx+1, test_episode_num))
         IoU_lists_ = []
         loss_list_ = []
         actions_list = []
@@ -499,7 +572,7 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
         IoUs = []
         for vi in range(FLAGS.max_episode_length):
-            IoUs.append(replay_mem.calu_IoU(pred_out.vox_pred_test[vi], vox_gtr))
+            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         #eval_log(i_idx, pred_out, final_IoU)
         
@@ -508,18 +581,18 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         loss_list_.append(pred_out.recon_loss_list_test)
         actions_list.append(actions)
 
-            #if FLAGS.if_save_eval:
-            #    
-            #    save_dict = {
-            #        'voxel_list': np.squeeze(pred_out.vox_pred_test),
-            #        'vox_gt': vox_gt,
-            #        'vox_gtr': vox_gtr,
-            #        'model_id': model_id,
-            #        'states': rollout_obj.last_trajectory,
-            #        'RGB_list': mvnet_input.rgb
-            #    }
+        if FLAGS.if_save_eval:
+            
+            save_dict = {
+                'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'vox_gt': vox_gt,
+                'vox_gtr': vox_gtr,
+                'model_id': model_id,
+                'states': rollout_obj.last_trajectory,
+                'RGB_list': mvnet_input.rgb
+            }
 
-            #    dump_outputs(save_dict, train_i, i_idx)
+            dump_outputs_model(save_dict, train_i, i_idx, mode='active')
         IoU_lists_ = np.asarray(IoU_lists_)
         loss_list_ = np.asarray(loss_list_)
         actions_list = np.asarray(actions_list)
@@ -660,6 +733,31 @@ def dump_outputs(save_dict, train_i, i_idx, mode=''):
 
     #    img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
     #    other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
+
+def dump_outputs_model(save_dict, train_i, i_idx, mode=''):
+    eval_dir = os.path.join(FLAGS.LOG_DIR, 'eval')
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+                
+    eval_dir = os.path.join(eval_dir, '{}'.format(train_i))
+    if not os.path.exists(eval_dir):
+        os.mkdir(eval_dir)
+
+    mat_save_name = os.path.join(eval_dir, '{}_{}.mat'.format(i_idx, mode))
+    sio.savemat(mat_save_name, save_dict)
+
+    gt_save_name = os.path.join(eval_dir, '{}_gt.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gt'], gt_save_name)
+
+    gtr_save_name = os.path.join(eval_dir, '{}_gtr.binvox'.format(i_idx))
+    save_voxel(save_dict['vox_gtr'], gtr_save_name)
+    
+    for i in xrange(FLAGS.max_episode_length):
+        pred_save_name = os.path.join(eval_dir, '{}_pred{}_{}.binvox'.format(i_idx, i, mode))
+        save_voxel(save_dict['voxel_list'][i], pred_save_name)
+
+        img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
+        other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
     
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
@@ -692,8 +790,12 @@ if __name__ == "__main__":
             restore_from_iter(agent, FLAGS.test_iter) 
         replay_mem = ReplayMemory(FLAGS)
         rollout_obj = Rollout(agent, senv, replay_mem, FLAGS)
-        test_random(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
-        test_active(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
+        if FLAGS.test_random:
+            test_random(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
+        elif FLAGS.test_oneway:
+            test_oneway(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
+        else:
+            test_active(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
 
         sys.exit()
 
