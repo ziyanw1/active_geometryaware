@@ -134,6 +134,7 @@ flags.DEFINE_integer("test_iter", 2, "init i to")
 flags.DEFINE_integer("test_episode_num", 2, "init i to")
 flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
 flags.DEFINE_boolean("if_save_eval", False, "if save evaluation results")
+flags.DEFINE_boolean("initial_dqn", False, "if initial dqn")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
@@ -149,6 +150,7 @@ flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
 flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
 flags.DEFINE_boolean('GBL_thread', False, '')
+flags.DEFINE_boolean('pose_noise', False, '')
 FLAGS = flags.FLAGS
 
 #POINTCLOUDSIZE = FLAGS.num_point
@@ -377,7 +379,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
                 'RGB_list': mvnet_input.rgb
             }
 
-            dump_outputs(save_dict, train_i, i_idx, mode)
+            dump_outputs_model(save_dict, train_i, i_idx, mode)
             
     rewards_list = np.asarray(rewards_list)
     IoU_list = np.asarray(IoU_list)
@@ -435,7 +437,7 @@ def test_random(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             
             IoUs = []
             for vi in range(FLAGS.max_episode_length):
-                IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
+                IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr), FLAGS.iou_thres))
             #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
             #eval_log(i_idx, pred_out, final_IoU)
             
@@ -504,7 +506,7 @@ def test_oneway(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
         IoUs = []
         for vi in range(FLAGS.max_episode_length):
-            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
+            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr), FLAGS.iou_thres))
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         #eval_log(i_idx, pred_out, final_IoU)
         
@@ -517,6 +519,7 @@ def test_oneway(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             
             save_dict = {
                 'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'voxel_rot_list': np.squeeze(pred_out.vox_pred_test_rot),
                 'vox_gt': vox_gt,
                 'vox_gtr': vox_gtr,
                 'model_id': model_id,
@@ -572,7 +575,7 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         
         IoUs = []
         for vi in range(FLAGS.max_episode_length):
-            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr)))
+            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr), FLAGS.iou_thres))
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         #eval_log(i_idx, pred_out, final_IoU)
         
@@ -585,11 +588,13 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             
             save_dict = {
                 'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'voxel_rot_list': np.squeeze(pred_out.vox_pred_test_rot),
                 'vox_gt': vox_gt,
                 'vox_gtr': vox_gtr,
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
-                'RGB_list': mvnet_input.rgb
+                'RGB_list': mvnet_input.rgb,
+                'voxel_rot_list': np.squeeze(pred_out.vox_pred_test_rot)
             }
 
             dump_outputs_model(save_dict, train_i, i_idx, mode='active')

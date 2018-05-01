@@ -40,7 +40,13 @@ class ActiveMVnet(object):
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
-        self.pretrain_saver = tf.train.Saver(max_to_keep=None)
+        if FLAGS.initial_dqn:
+            aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
+            unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
+            dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
+            self.pretrain_saver = tf.train.Saver(unet_var+aggr_var, max_to_keep=None)
+        else:
+            self.pretrain_saver = tf.train.Saver(max_to_keep=None)
         
         # create a sess
         config = tf.ConfigProto()
@@ -485,7 +491,7 @@ class ActiveMVnet(object):
             #negative sign is important -- although i'm not sure how it works
             R = other.voxel.get_transform_matrix_tf(-az0, el0, invert_rot=True)
             #print vox.get_shape().as_list()
-            return tf.clip_by_value(other.voxel.rotate_voxel(other.voxel.transformer_preprocess(vox), R), 0.0, 1.0)
+            return tf.clip_by_value(other.voxel.transformer_preprocess(other.voxel.rotate_voxel(vox, R)), 0.0, 1.0)
         
         az0_test = self.azimuth_list_test[:,0,0]
         el0_test = self.elevation_list_test[:,0,0]
@@ -753,10 +759,10 @@ class ActiveMVnet(object):
         #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
         #    variables_to_train=aggr_var+dqn_var)
         #self.opt_reinforce = z
-        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-        #    optimizer=self.optimizer_reinforce, clip_gradient_norm=10, variables_to_train=dqn_var)
         self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-            optimizer=self.optimizer_reinforce, variables_to_train=dqn_var)
+            optimizer=self.optimizer_reinforce, clip_gradient_norm=10, variables_to_train=dqn_var)
+        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
+        #    optimizer=self.optimizer_reinforce, variables_to_train=dqn_var)
         self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
             variables_to_train=dqn_var)
         self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
@@ -891,8 +897,9 @@ class ActiveMVnet(object):
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
         else:           ## testing
-            #print(action_prob)
+            print(action_prob)
             a_response = np.amax(action_prob)
+            a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)

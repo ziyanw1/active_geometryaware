@@ -3,8 +3,9 @@ import sys
 import numpy as np
 import scipy.misc as sm
 import matplotlib.pyplot as plt
+import random
 
-np.random.seed(1024)
+np.random.seed(2048)
 
 cat_name = {
     "02691156" : "airplane",
@@ -20,7 +21,8 @@ cat_name = {
     # "04401088",
     # "04530566",
     "02958343" : "car",
-    "03797390": "mug"
+    "03797390": "mug", 
+    "0000": "combine"
 }
 
 azim_all = np.linspace(0, 360, 37)
@@ -28,7 +30,7 @@ azim_all = azim_all[0:-1]
 azim_for_init = np.linspace(0, 360, 9)
 azim_for_init = np.asarray([0, 40, 90, 120, 180, 210, 270, 330])
 elev_all = np.linspace(10, 60, 6)
-elev_for_init = np.asarray([40]) 
+elev_for_init = np.asarray([20, 40, 60]) 
 
 class ShapeNetEnv():
     def __init__(self, FLAGS):
@@ -47,6 +49,7 @@ class ShapeNetEnv():
         
         with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.test_filename_prefix), 'r') as f:
             self.test_list = f.read().splitlines()
+            np.random.shuffle(self.test_list)
         
         self.data_dir = 'data/data_cache/blender_renderings/{}/res{}_{}_all/'.format(self.category,
             FLAGS.resolution, cat_name[self.category])

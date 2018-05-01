@@ -138,6 +138,7 @@ flags.DEFINE_integer("test_iter", 2, "init i to")
 flags.DEFINE_integer("test_episode_num", 2, "init i to")
 flags.DEFINE_boolean("save_test_results", True, "if init i from 0")
 flags.DEFINE_boolean("if_save_eval", False, "if save evaluation results")
+flags.DEFINE_boolean("initial_dqn", False, "if initial dqn")
 # reinforcement learning
 flags.DEFINE_integer('mvnet_resolution', 224, 'image resolution for mvnet')
 flags.DEFINE_integer('max_episode_length', 4, 'maximal episode length for each trajactory')
@@ -212,7 +213,7 @@ def restore(ae):
 def restore_pretrain(ae):
     restore_path = FLAGS.pretrain_restore_path
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
-    ae.saver.restore(ae.sess, restore_path)
+    ae.pretrain_saver.restore(ae.sess, restore_path)
     log_string(tf_util.toYellow("----- Restored from %s."%restore_path))
 
 def restore_from_iter(ae, iter):
@@ -419,6 +420,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             
             save_dict = {
                 'voxel_list': np.squeeze(pred_out.vox_pred_test),
+                'voxel_rot_list': np.squeeze(pred_out.vox_pred_test_rot),
                 'vox_gt': vox_gt,
                 'vox_gtr': vox_gtr,
                 'model_id': model_id,
@@ -779,6 +781,13 @@ if __name__ == "__main__":
             restore(active_mv)
     if FLAGS.pretrain_restore:
         restore_pretrain(active_mv)
+
+    #if FLAGS.initial_dqn:
+    #    print 'initialing dqn'
+    #    dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn') 
+    #    for v in dqn_var:
+    #        active_mv.sess.run(v.initializer)
+
     train(active_mv)
     
     # z_list = []
