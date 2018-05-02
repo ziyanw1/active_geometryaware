@@ -52,8 +52,8 @@ for line1, line2 in zip(listFile1, listFile2):
     model_index += 1
     print(command)
 	# for debug
-    #if model_index >= 5:
-    #    break
+    if model_index >= 5:
+        break
 
 print(util.toMagenta('=== Rendering %d commands on %d workers, it takes a long time...'%(len(commands), pool_num)))
 pool = Pool(pool_num)
