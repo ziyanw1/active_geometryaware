@@ -40,7 +40,13 @@ class ActiveMVnet(object):
         
         # Add ops to save and restore all variable 
         self.saver = tf.train.Saver()
-        self.pretrain_saver = tf.train.Saver(max_to_keep=None)
+        if FLAGS.initial_dqn:
+            aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
+            unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
+            dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
+            self.pretrain_saver = tf.train.Saver(unet_var+aggr_var, max_to_keep=None)
+        else:
+            self.pretrain_saver = tf.train.Saver(max_to_keep=None)
         
         # create a sess
         config = tf.ConfigProto()
@@ -93,6 +99,7 @@ class ActiveMVnet(object):
             vox = tf.expand_dims(vox, axis = 4)
             #negative sign is important -- although i'm not sure how it works
             R = other.voxel.get_transform_matrix_tf(-az0, el0)
+            #print vox.get_shape().as_list()
             return tf.clip_by_value(other.voxel.rotate_voxel(other.voxel.transformer_preprocess(vox), R), 0.0, 1.0)
 
         def tile_voxels(x):
@@ -253,6 +260,11 @@ class ActiveMVnet(object):
                 unproj_grids, channels, self.FLAGS, trainable = trainable, reuse = reuse,
                 is_training = self.is_training, scope_name = scope_name
             )
+        elif self.FLAGS.agg_name == 'MAXPOOL':
+            return other.nets.max_pooling_aggregator(
+                unproj_grids, channels, self.FLAGS, trainable = trainable, reuse = reuse,
+                is_training = self.is_training, scope_name = scope_name
+            )
         elif self.FLAGS.unet_name == 'OUTLINE':
             #bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
             #unproj_grids = uncollapse_dims(unproj_grids, bs, self.FLAGS.max_episode_length)
@@ -290,21 +302,41 @@ class ActiveMVnet(object):
         with tf.device('/gpu:0'):
             
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject(
-                self.invZ_list_batch,
-                self.mask_list_batch,
-                self.RGB_list_batch_norm,
-                self.azimuth_list_batch,
-                self.elevation_list_batch
-            )
-            
-            self.unproj_grid_test = self.unproj_net.unproject(
-                self.invZ_list_test,
-                self.mask_list_test,
-                self.RGB_list_test_norm,
-                self.azimuth_list_test,
-                self.elevation_list_test
-            )
+            if self.FLAGS.occu_only:
+                self.unproj_grid_batch = self.unproj_net.unproject(
+                    self.invZ_list_batch,
+                    self.mask_list_batch,
+                    tf.zeros_like(self.RGB_list_batch_norm),
+                    self.azimuth_list_batch,
+                    self.elevation_list_batch
+                )
+
+                _, self.unproj_grid_batch = tf.split(self.unproj_grid_batch, [6, 1], axis=-1)
+
+                self.unproj_grid_test = self.unproj_net.unproject(
+                    self.invZ_list_test,
+                    self.mask_list_test,
+                    tf.zeros_like(self.RGB_list_test_norm),
+                    self.azimuth_list_test,
+                    self.elevation_list_test
+                )
+                _, self.unproj_grid_test = tf.split(self.unproj_grid_test, [6, 1], axis=-1)
+            else:
+                self.unproj_grid_batch = self.unproj_net.unproject(
+                    self.invZ_list_batch,
+                    self.mask_list_batch,
+                    self.RGB_list_batch_norm,
+                    self.azimuth_list_batch,
+                    self.elevation_list_batch
+                )
+                
+                self.unproj_grid_test = self.unproj_net.unproject(
+                    self.invZ_list_test,
+                    self.mask_list_test,
+                    self.RGB_list_test_norm,
+                    self.azimuth_list_test,
+                    self.elevation_list_test
+                )
 
         if self.FLAGS.debug_mode:
             summ.histogram('unprojections', self.unproj_grid_batch)
@@ -479,7 +511,19 @@ class ActiveMVnet(object):
             ### TODO:BATCH NORM ON EACH TIME STEP
 
             ## --------------- test  -------------------
-
+        def rotate_voxels(vox, az0, el0):
+            vox = tf.expand_dims(vox, axis = 4)
+            #negative sign is important -- although i'm not sure how it works
+            R = other.voxel.get_transform_matrix_tf(-az0, el0, invert_rot=True)
+            #print vox.get_shape().as_list()
+            return tf.clip_by_value(other.voxel.transformer_preprocess(other.voxel.rotate_voxel(vox, R)), 0.0, 1.0)
+        
+        az0_test = self.azimuth_list_test[:,0,0]
+        el0_test = self.elevation_list_test[:,0,0]
+        rotate_func = lambda x: rotate_voxels(x, az0_test, el0_test) 
+        #print self.vox_pred_test.get_shape().as_list()
+        self.vox_pred_test_rot = tf.map_fn(rotate_func, tf.stack(tf.unstack(tf.expand_dims(self.vox_pred_test, axis=0),
+            axis=1))) 
     
     def _create_loss(self):
         ## create reconstruction loss
@@ -741,7 +785,9 @@ class ActiveMVnet(object):
         #    variables_to_train=aggr_var+dqn_var)
         #self.opt_reinforce = z
         self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-            optimizer=self.optimizer_reinforce, clip_gradient_norm=4, variables_to_train=dqn_var)
+            optimizer=self.optimizer_reinforce, clip_gradient_norm=10, variables_to_train=dqn_var)
+        #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
+        #    optimizer=self.optimizer_reinforce, variables_to_train=dqn_var)
         self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
             variables_to_train=dqn_var)
         self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
@@ -764,7 +810,7 @@ class ActiveMVnet(object):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
-            ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test']
+            ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test', 'vox_pred_test_rot']
         ))
 
         basic_list = [
@@ -780,13 +826,13 @@ class ActiveMVnet(object):
         if self.FLAGS.burin_opt == 0:
             burnin_list = basic_list[:] + ['opt_recon', 'critic_loss', 'opt_critic']
         elif self.FLAGS.burin_opt == 1:
-            burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last']
+            burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last', 'opt_critic']
         elif self.FLAGS.burin_opt == 2:
             burnin_list = basic_list[:] + ['opt_recon_first','critic_loss', 'recon_loss_first']
         train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'opt_reinforce',
             'action_list_batch', 'IoU_list_batch']
         train_mvnet_list = basic_list[:] + ['opt_recon_last', 'merged_train']
-        train_dqn_list = basic_list[:] + ['opt_reinforce', 'opt_recon_unet', 'loss_act_regu', 'merged_train']
+        train_dqn_list = basic_list[:] + ['opt_reinforce', 'opt_recon_last', 'loss_act_regu', 'merged_train']
         train_dqn_only_list = basic_list[:] + ['opt_reinforce', 'loss_act_regu', 'merged_train', 'action_list_batch',
             'IoU_list_batch', 'indexes', 'responsible_action']
 
@@ -876,8 +922,9 @@ class ActiveMVnet(object):
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)
         else:           ## testing
-            #print(action_prob)
+            print(action_prob)
             a_response = np.amax(action_prob)
+            a_response = np.random.choice(action_prob, p=action_prob)
 
             a_idx = np.argmax(action_prob == a_response)
             print(a_idx)

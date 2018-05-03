@@ -50,6 +50,7 @@ class Rollout(object):
                 if len(actions) == 0:
                     probs = [1.0/8]*8
                     agent_action = np.random.choice(self.env.action_space_n, p=probs)
+                    agent_action = np.random.choice([0,1,4,7])
                 else:
                     agent_action = actions[0]
                     

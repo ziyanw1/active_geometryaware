@@ -20,7 +20,7 @@ sys.path.append(os.path.join('utils'))
 from util import downsample
 import binvox_rw
 
-np.random.seed(1024)
+np.random.seed(2048)
 
 cat_name = {
     "02691156" : "airplane",
@@ -36,7 +36,8 @@ cat_name = {
     # "04401088",
     # "04530566",
     "02958343" : "car",
-    "03797390": "mug"
+    "03797390": "mug",
+    "0000": "combine"
 }
 
 class ReplayMemory():
