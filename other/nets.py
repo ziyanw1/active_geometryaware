@@ -758,3 +758,51 @@ def pooling_aggregator(unproj_grids, channels, FLAGS, trainable=True, reuse=Fals
         feats[:,0],
         givei = True
     )
+
+def max_pooling_aggregator(unproj_grids, channels, FLAGS, trainable=True, reuse=False,
+                       is_training = True, scope_name='aggr_64'):
+
+
+    unproj_grids = collapse_dims(unproj_grids)
+        
+    with tf.variable_scope(scope_name, reuse = reuse) as scope:
+
+        #a simple 1x1 convolution -- no BN
+        feats = slim.conv3d(
+            unproj_grids, channels, activation_fn = None, kernel_size=1, stride=1, trainable = trainable
+        )
+
+    l = FLAGS.max_episode_length
+    uncollapse = lambda x: uncollapse_dims(x, x.get_shape().as_list()[0]/l, l)
+            
+    feats = uncollapse(feats)
+    unproj_grids = uncollapse(unproj_grids)
+    
+    #B x E x V x V X V x C
+
+    def fn_pool(feats, pool_fn, id_, givei = False):
+        outputs = []
+        base = id_
+        for i in range(FLAGS.max_episode_length):
+            if givei:
+                base = pool_fn(feats[:,i], base, i)
+            else:
+                base = pool_fn(feats[:,i], base)
+            outputs.append(base)
+        return tf.stack(outputs, axis = 1)
+
+    #return tf.concat([
+    #    fn_pool(unproj_grids, tf.maximum, unproj_grids[:,0]),
+    #    fn_pool(unproj_grids, tf.minimum, unproj_grids[:,0]),
+    #    fn_pool(feats, tf.maximum, feats[:,0])
+    #], axis = -1)
+
+    #max may be a bad idea
+    return fn_pool(feats, tf.maximum, feats[:,0])
+
+    #return fn_pool(
+    #    feats,
+    #    lambda x, prev, i: i/(i+1.0) * prev + 1/(i+1.0) * x,
+    #    feats[:,0],
+    #    givei = True
+    #)

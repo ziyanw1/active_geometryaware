@@ -260,6 +260,11 @@ class ActiveMVnet(object):
                 unproj_grids, channels, self.FLAGS, trainable = trainable, reuse = reuse,
                 is_training = self.is_training, scope_name = scope_name
             )
+        elif self.FLAGS.agg_name == 'MAXPOOL':
+            return other.nets.max_pooling_aggregator(
+                unproj_grids, channels, self.FLAGS, trainable = trainable, reuse = reuse,
+                is_training = self.is_training, scope_name = scope_name
+            )
         elif self.FLAGS.unet_name == 'OUTLINE':
             #bs = int(unproj_grids.get_shape()[0]) / self.FLAGS.max_episode_length
             #unproj_grids = uncollapse_dims(unproj_grids, bs, self.FLAGS.max_episode_length)
@@ -297,21 +302,41 @@ class ActiveMVnet(object):
         with tf.device('/gpu:0'):
             
             ## [BSxEP, V, V, V, CH]
-            self.unproj_grid_batch = self.unproj_net.unproject(
-                self.invZ_list_batch,
-                self.mask_list_batch,
-                self.RGB_list_batch_norm,
-                self.azimuth_list_batch,
-                self.elevation_list_batch
-            )
-            
-            self.unproj_grid_test = self.unproj_net.unproject(
-                self.invZ_list_test,
-                self.mask_list_test,
-                self.RGB_list_test_norm,
-                self.azimuth_list_test,
-                self.elevation_list_test
-            )
+            if self.FLAGS.occu_only:
+                self.unproj_grid_batch = self.unproj_net.unproject(
+                    self.invZ_list_batch,
+                    self.mask_list_batch,
+                    tf.zeros_like(self.RGB_list_batch_norm),
+                    self.azimuth_list_batch,
+                    self.elevation_list_batch
+                )
+
+                _, self.unproj_grid_batch = tf.split(self.unproj_grid_batch, [6, 1], axis=-1)
+
+                self.unproj_grid_test = self.unproj_net.unproject(
+                    self.invZ_list_test,
+                    self.mask_list_test,
+                    tf.zeros_like(self.RGB_list_test_norm),
+                    self.azimuth_list_test,
+                    self.elevation_list_test
+                )
+                _, self.unproj_grid_test = tf.split(self.unproj_grid_test, [6, 1], axis=-1)
+            else:
+                self.unproj_grid_batch = self.unproj_net.unproject(
+                    self.invZ_list_batch,
+                    self.mask_list_batch,
+                    self.RGB_list_batch_norm,
+                    self.azimuth_list_batch,
+                    self.elevation_list_batch
+                )
+                
+                self.unproj_grid_test = self.unproj_net.unproject(
+                    self.invZ_list_test,
+                    self.mask_list_test,
+                    self.RGB_list_test_norm,
+                    self.azimuth_list_test,
+                    self.elevation_list_test
+                )
 
         if self.FLAGS.debug_mode:
             summ.histogram('unprojections', self.unproj_grid_batch)
