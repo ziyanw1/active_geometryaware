@@ -16,9 +16,8 @@ from threading import Thread
 from Queue import Queue
 from time import sleep
 
-sys.path.append(os.path.join('utils'))
-from util import downsample
-import binvox_rw
+from utils.util import downsample
+from other import binvox_rw
 
 np.random.seed(2048)
 
