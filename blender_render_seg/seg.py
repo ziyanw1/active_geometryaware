@@ -83,10 +83,12 @@ links.new(seg_mask_2.outputs['Alpha'], seg_out_2.inputs['Image'])
 
 ######
 
-bpy.data.scenes['Scene'].render.filepath = 'out'
+bpy.data.scenes['Scene'].render.filepath = 'render'
 seg_out_1.file_slots[0].path = 'idx1'
 seg_out_2.file_slots[0].path = 'idx2'
 bpy.ops.render.render( write_still=True )
+
+render = imread('render.png')
 
 mask1 = imread('idx10001.png')
 mask1 = mask1[:,:,0] * mask1[:,:,3]
@@ -100,3 +102,58 @@ imsave(
     'out.png',
     np.stack([mask1, mask2, bg], axis = 2)*255.0
 )
+
+####### rendering amodal segmentations
+
+delta = 1000.0
+delta = mathutils.Vector((delta, delta, delta))
+
+#1. move obj 1 out of the way
+for obj in bpy.data.objects:
+    obj.select = True
+    if 'mesh' in obj.name:
+        if obj.pass_index == idx1:
+            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location + delta
+    obj.select = False
+
+bpy.ops.render.render( write_still=True )
+amodal2 = imread('idx20001.png') #with obj 1 out of the way, this gives us amodal for 2
+
+#2. move obj 1 back into place
+for obj in bpy.data.objects:
+    obj.select = True
+    if 'mesh' in obj.name:
+        if obj.pass_index == idx1:
+            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location - delta
+    obj.select = False
+
+#3. move obj 2 out of place
+for obj in bpy.data.objects:
+    obj.select = True
+    if 'mesh' in obj.name:
+        if obj.pass_index == idx2:
+            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location + delta
+    obj.select = False
+
+bpy.ops.render.render( write_still=True )
+amodal1 = imread('idx10001.png') #with obj 2 out of the way, this gives us amodal for 1
+
+#4. move obj 2 back into place (for completeness... this is optional)
+for obj in bpy.data.objects:
+    obj.select = True
+    if 'mesh' in obj.name:
+        if obj.pass_index == idx2:
+            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location - delta
+    obj.select = False
+
+
+amodal1 = amodal1[:,:,0] * amodal1[:,:,3]
+amodal2 = amodal2[:,:,0] * amodal2[:,:,3]
+bg = np.logical_and(amodal1 == 0, amodal2 == 0)
+
+imsave(
+    'amodal.png',
+    np.stack([amodal1, amodal2, bg], axis = 2)*255.0
+)
+
+imsave('render.png', render)

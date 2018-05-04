@@ -36,11 +36,9 @@ class Unproject_tools:
 
     def add_noise(self, x):
         #x is in degrees
-        COMPOUND = True
-
-        noise_std = 2.5
+        noise_std = 5
         
-        if not COMPOUND:
+        if not self.FLAGS.compound_noise:
             x += tf.random_normal(tf.shape(x), mean = 0.0, stddev = noise_std)
             return x
         else:
