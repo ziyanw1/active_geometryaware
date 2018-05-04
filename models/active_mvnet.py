@@ -228,7 +228,7 @@ class ActiveMVnet(object):
 
                 return tf.nn.softmax(logits), logits, values
     
-    def _create_unet3d(self, vox_feat, channels, trainable=True, if_bn=False, reuse=False, scope_name='unet_3d'):
+    def _create_unet3d(self, vox_feat, mask, channels, trainable=True, if_bn=False, reuse=False, scope_name='unet_3d'):
 
         if self.FLAGS.unet_name == 'U_SAME':
             return other.nets.unet_same(
@@ -242,6 +242,11 @@ class ActiveMVnet(object):
             with tf.variable_scope(scope_name, reuse = reuse):
                 return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, bn_trainmode=self.is_training, 
                     freeze_decoder=not trainable, return_logits = True, debug = debug)
+        elif self.FLAGS.unet_name == 'U_VALID_SPARSE':
+            return other.nets.unet_valid_sparese(
+                vox_feat, mask, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
+                is_training = self.is_training, activation_fn = self.activation_fn, scope_name = scope_name
+            )
         elif self.FLAGS.unet_name == 'OUTLINE':
             return vox_feat, tf.zeros_like(vox_feat)
         else:
@@ -312,6 +317,7 @@ class ActiveMVnet(object):
                 )
 
                 _, self.unproj_grid_batch = tf.split(self.unproj_grid_batch, [6, 1], axis=-1)
+                self.unproj_grid_mask = self.unproj_grid_batch
 
                 self.unproj_grid_test = self.unproj_net.unproject(
                     self.invZ_list_test,
@@ -321,6 +327,7 @@ class ActiveMVnet(object):
                     self.elevation_list_test
                 )
                 _, self.unproj_grid_test = tf.split(self.unproj_grid_test, [6, 1], axis=-1)
+                self.unproj_grid_mask_test = self.unproj_grid_test
             else:
                 self.unproj_grid_batch = self.unproj_net.unproject(
                     self.invZ_list_batch,
@@ -329,6 +336,8 @@ class ActiveMVnet(object):
                     self.azimuth_list_batch,
                     self.elevation_list_batch
                 )
+                _, self.unproj_grid_mask = tf.split(self.unproj_grid_batch, [6, 1], axis=-1)
+                self.unproj_grid_mask = tf.identity(self.unproj_grid_mask)
                 
                 self.unproj_grid_test = self.unproj_net.unproject(
                     self.invZ_list_test,
@@ -337,6 +346,8 @@ class ActiveMVnet(object):
                     self.azimuth_list_test,
                     self.elevation_list_test
                 )
+                _, self.unproj_grid_mask_test = tf.split(self.unproj_grid_test, [6, 1], axis=-1)
+                self.unproj_grid_mask_test = tf.identity(self.unproj_grid_mask_test)
 
         if self.FLAGS.debug_mode:
             summ.histogram('unprojections', self.unproj_grid_batch)
@@ -356,31 +367,36 @@ class ActiveMVnet(object):
 
             
             vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
+            mask_grid_unstack = tf.unstack(self.unproj_grid_mask, axis=1)
             vox_pred_first, vox_logits_first = self._create_unet3d(
                 vox_feat_unstack[0],
+                mask_grid_unstack[0], 
                 channels=self.FLAGS.agg_channels,
                 trainable=True,
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
             )
 
-            unet_3d_reuse = lambda x: self._create_unet3d(
+            unet_3d_reuse = lambda (x, y): self._create_unet3d(
                 x,
+                y,
                 channels=self.FLAGS.agg_channels,
                 trainable=True,
                 if_bn=self.FLAGS.if_bn,
                 reuse=True,
                 scope_name='unet_3d'
             )
-            unet_3d_reuse_test = lambda x: self._create_unet3d(
+            unet_3d_reuse_test = lambda (x, y): self._create_unet3d(
                 x,
+                y,
                 channels=self.FLAGS.agg_channels,
                 trainable=False,
                 if_bn=self.FLAGS.if_bn,
                 reuse=True,
                 scope_name='unet_3d'
             )
-            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, tf.stack(vox_feat_unstack[1:]), dtype=(tf.float32, tf.float32))
+            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, (tf.stack(vox_feat_unstack[1:]), 
+                tf.stack(mask_grid_unstack[1:])), dtype=(tf.float32, tf.float32))
             self.vox_list_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
             self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
 
@@ -408,9 +424,10 @@ class ActiveMVnet(object):
             )
 
             vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
+            mask_grid_test_unstack = tf.unstack(self.unproj_grid_mask_test, axis=1)
 
-            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, tf.stack(vox_feat_test_unstack), 
-                dtype=(tf.float32, tf.float32))
+            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, (tf.stack(vox_feat_test_unstack), 
+                tf.stack(mask_grid_test_unstack)), dtype=(tf.float32, tf.float32))
 
             self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
             self.vox_pred_test = tf.squeeze(self.vox_pred_test_)

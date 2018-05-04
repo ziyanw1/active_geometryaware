@@ -653,6 +653,88 @@ def unet_same(vox_feat, channels, FLAGS, trainable=True, if_bn=False, reuse=Fals
 
     return tf.nn.sigmoid(net_out_), net_out_
 
+def unet_valid_sparese(vox_feat, mask, channels, FLAGS, trainable=True, if_bn=False, reuse=False,
+              is_training = True, activation_fn = tf.nn.relu, scope_name='unet_3d'):
+    
+    with tf.variable_scope(scope_name) as scope:
+        if reuse:
+            scope.reuse_variables()
+
+        if if_bn:
+            batch_normalizer_gen = slim.batch_norm
+            batch_norm_params_gen = {'is_training': is_training, 'decay': FLAGS.bn_decay}
+        else:
+            batch_normalizer_gen = None
+            batch_norm_params_gen = None
+
+        if FLAGS.if_l2Reg:
+            weights_regularizer = slim.l2_regularizer(1e-5)
+        else:
+            weights_regularizer = None
+
+        with slim.arg_scope([slim.fully_connected, slim.conv3d, slim.conv3d_transpose],
+                activation_fn=activation_fn,
+                trainable=trainable,
+                normalizer_fn=batch_normalizer_gen,
+                normalizer_params=batch_norm_params_gen,
+                weights_regularizer=weights_regularizer):
+            
+            mask_down1 = tf.stop_gradient(mask)
+            net_down1 = slim.conv3d(vox_feat*tf.tile(mask_down1, [1,1,1,1,16]), 16, kernel_size=4, stride=2, padding='SAME', scope='unet_conv1')
+            mask_down2 = tf.stop_gradient(slim.max_pool3d(mask_down1, kernel_size=4, stride=2, padding='SAME')) 
+            net_down2 = slim.conv3d(net_down1*tf.tile(mask_down2, [1,1,1,1,16]) , 32, kernel_size=4, stride=2, padding='SAME', scope='unet_conv2')
+            #net_down2 = slim.conv3d(net_down1 , 32, kernel_size=4, stride=2, padding='SAME', scope='unet_conv2')
+            mask_down3 = tf.stop_gradient(slim.max_pool3d(mask_down2, kernel_size=4, stride=2, padding='SAME'))
+            net_down3 = slim.conv3d(net_down2*tf.tile(mask_down3, [1,1,1,1,32]), 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
+            #net_down3 = slim.conv3d(net_down2, 64, kernel_size=4, stride=2, padding='SAME', scope='unet_conv3')
+            mask_down4 = tf.stop_gradient(slim.max_pool3d(mask_down3, kernel_size=4, stride=2, padding='SAME'))
+            net_down4 = slim.conv3d(net_down3*tf.tile(mask_down4, [1,1,1,1,64]), 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
+            #net_down4 = slim.conv3d(net_down3, 128, kernel_size=4, stride=2, padding='SAME', scope='unet_conv4')
+            mask_down5 = tf.stop_gradient(slim.max_pool3d(mask_down4, kernel_size=4, stride=2, padding='SAME'))
+            net_down5 = slim.conv3d(net_down4*tf.tile(mask_down5, [1,1,1,1,128]), 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
+            #net_down5 = slim.conv3d(net_down4, 256, kernel_size=4, stride=2, padding='SAME', scope='unet_conv5')
+            mask_down6 = tf.stop_gradient(slim.max_pool3d(mask_down5, kernel_size=4, stride=2, padding='SAME'))
+            
+            net_up4 = slim.conv3d_transpose(net_down5*tf.tile(mask_down6, [1,1,1,1,256]), 128, kernel_size=4, stride=2, padding='SAME', \
+                scope='unet_deconv4')
+            #net_up4 = slim.conv3d_transpose(net_down5, 128, kernel_size=4, stride=2, padding='SAME', \
+            #    scope='unet_deconv4')
+            net_up4_ = tf.concat([net_up4, net_down4], axis=-1)
+            net_up3 = slim.conv3d_transpose(net_up4_*tf.tile(mask_down5, [1,1,1,1,256]), 64, kernel_size=4, stride=2, padding='SAME', \
+                scope='unet_deconv3')
+            #net_up3 = slim.conv3d_transpose(net_up4_, 64, kernel_size=4, stride=2, padding='SAME', \
+            #    scope='unet_deconv3')
+            net_up3_ = tf.concat([net_up3, net_down3], axis=-1)
+            net_up2 = slim.conv3d_transpose(net_up3_*tf.tile(mask_down4, [1,1,1,1,128]), 32, kernel_size=4, stride=2, padding='SAME', \
+                scope='unet_deconv2')
+            #net_up2 = slim.conv3d_transpose(net_up3_, 32, kernel_size=4, stride=2, padding='SAME', \
+            #    scope='unet_deconv2')
+            net_up2_ = tf.concat([net_up2, net_down2], axis=-1)
+            net_up1 = slim.conv3d_transpose(net_up2_*tf.tile(mask_down3, [1,1,1,1,64]), 16, kernel_size=4, stride=2, padding='SAME', \
+                scope='unet_deconv1')
+            #net_up1 = slim.conv3d_transpose(net_up2_, 16, kernel_size=4, stride=2, padding='SAME', \
+            #    scope='unet_deconv1')
+            net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
+            #net_out_ = slim.conv3d(net_up1_, 1, kernel_size=4, stride=2, padding='SAME', \
+            #    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
+            ## heavy load
+            net_up0 = slim.conv3d_transpose(net_up1_*tf.tile(mask_down2, [1,1,1,1,32]), channels, kernel_size=4, stride=2, padding='SAME', \
+                scope='unet_deconv0')
+            #net_up0 = slim.conv3d_transpose(net_up1_, channels, kernel_size=4, stride=2, padding='SAME', \
+            #    scope='unet_deconv0')
+            net_up0_ = tf.concat([net_up0, vox_feat], axis=-1)
+            net_out_ = slim.conv3d(net_up0_, 1, kernel_size=3, stride=1, padding='SAME', \
+                activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_deconv_out')
+            ## heavy load
+            #net_up2_ = tf.add(net_up2, net_down2)
+            #net_up1 = slim.conv3d_transpose(net_up2_, 64, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+            #    scope='unet_deconv1')
+            #net_up1_ = tf.concat([net_up1, net_down1], axis=-1)
+            #net_out_ = slim.conv3d_transpose(net_up1_, out_channel, kernel_size=[4,4], stride=[2,2], padding='SAME', \
+            #    activation_fn=None, normalizer_fn=None, normalizer_params=None, scope='unet_out')
+
+    return tf.nn.sigmoid(net_out_), net_out_
+
 
 def gru_aggregator(unproj_grids, channels, FLAGS, trainable=True, if_bn=False, reuse=False,
                    is_training = True, activation_fn = tf.nn.relu, scope_name='aggr_64'):
