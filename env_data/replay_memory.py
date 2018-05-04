@@ -37,7 +37,8 @@ cat_name = {
     # "04530566",
     "02958343" : "car",
     "03797390": "mug",
-    "0000": "combine"
+    "0000": "combine",
+    "1111": "1111"
 }
 
 class ReplayMemory():
@@ -51,6 +52,8 @@ class ReplayMemory():
         self.resolution = FLAGS.resolution
         self.data_dir = 'data/data_cache/blender_renderings/{}/res128_{}_all/'.format(self.FLAGS.category,
             cat_name[self.FLAGS.category])
+        if self.FLAGS.category == '1111':
+            self.data_dir = '/projects/katefgroup/ziyan/blender_renderings/'
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -145,6 +148,10 @@ class ReplayMemory():
     def read_png_to_uint8(self, azim, elev, model_id):
         img_name = 'RGB_{}_{}.png'.format(int(azim), int(elev))
         img_path = os.path.join(self.data_dir, model_id, img_name)
+        if self.FLAGS.category == '1111':
+            category, model_id = model_id.split('/')
+            img_path = os.path.join(self.data_dir, '{}/res{}_1111_all/{}'.format(category, self.FLAGS.resolution,
+                model_id),img_name)
         img = mpimg.imread(img_path)
         new_img = img[:, :, :3]
         mask = img[:, :, 3]
@@ -157,6 +164,10 @@ class ReplayMemory():
     def read_invZ(self, azim, elev, model_id, resize = True):
         invZ_name = 'invZ_{}_{}.npy'.format(int(azim), int(elev))
         invZ_path = os.path.join(self.data_dir, model_id, invZ_name)
+        if self.FLAGS.category == '1111':
+            category, model_id = model_id.split('/')
+            invZ_path = os.path.join(self.data_dir, '{}/res{}_1111_all/{}'.format(category, self.FLAGS.resolution,
+                model_id), invZ_name)
         invZ = np.load(invZ_path)
         if resize:
             invZ = sm.imresize(invZ, (self.FLAGS.resolution, self.FLAGS.resolution), mode = 'F', interp='nearest')
@@ -389,6 +400,9 @@ class ReplayMemory():
 
             model_id = data_.model_id
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(self.FLAGS.category, model_id))
+            if self.FLAGS.category == '1111':
+                category_, model_id_ = model_id.split('/')
+                voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(category_, model_id_))
             voxel = self.read_vox(voxel_name)
 
             mvinputs.put_voxel(voxel, batch_idx = b_idx)
