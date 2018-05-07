@@ -103,15 +103,21 @@ class data_loader(object):
         data_lmdb_path = flags.data_path
         data_lmdb_train_file = flags.data_file + '_train.tfr'
         data_lmdb_test_file = flags.data_file + '_test.tfr'
+        data_size_train_file = flags.data_file + '_train.npy'
+        data_size_test_file = flags.data_file + '_test.npy'
         
         # data_lmdb_path = "/home/ziyan/3dv2017_PBA_out/data/lmdb/"
         # self.data_pcd_train = data_lmdb_path + "randLampbb8Full_%s_%d_train_imageAndShape.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = data_lmdb_path + "random_randomLamp0822_%s_%d_train_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         self.data_ae_train = os.path.join(data_lmdb_path, data_lmdb_train_file)
+        self.data_size_train = os.path.join(data_lmdb_path, data_size_train_file)
+        self.tfrecord_train_size = int(np.load(self.data_size_train))
         #self.data_pcd_train = data_lmdb_path + "random_randLamp1005_%s_%d_train_imageAndShape_single_persp.amdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_train = '/data_tmp/lmdb/badRenderbb9_car_24576_train_imageAndShape.lmdb'
         # self.data_pcd_test = data_lmdb_path + "random_randomLamp0822_%s_%d_test_imageAndShape_single.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         self.data_ae_test = os.path.join(data_lmdb_path, data_lmdb_test_file)
+        self.data_size_test = os.path.join(data_lmdb_path, data_size_test_file)
+        self.tfrecord_test_size = int(np.load(self.data_size_test))
         #self.data_pcd_test = data_lmdb_path + "random_randLamp1005_%s_%d_test_imageAndShape_single_persp.lmdb"%(FLAGS.cat_name, FLAGS.num_point)
         # self.data_pcd_test = '/newfoundland/rz1/lmdb/badRenderbb9_car_24576_test_imageAndShape.lmdb'
         
@@ -132,8 +138,9 @@ class data_loader(object):
         self.ds_train.reset_state()
         '''
 
-        raise Exception, 'update size'
-        self.ds_train = TFRecordData(self.data_ae_train, size = 6) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
+        #raise Exception, 'update size'
+
+        self.ds_train = TFRecordData(self.data_ae_train, size = self.tfrecord_train_size) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
         self.x_size_train = self.ds_train.size()
         self.ds_train = LocallyShuffleData(self.ds_train, buffer_size)
         self.ds_train = PrefetchData(self.ds_train, buffer_size, parall_num)
@@ -159,8 +166,8 @@ class data_loader(object):
         self.ds_test.reset_state()
         '''
 
-        raise Exception, 'update size'        
-        self.ds_test = TFRecordData(self.data_ae_test, size=3) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
+        #raise Exception, 'update size'        
+        self.ds_test = TFRecordData(self.data_ae_test, size=self.tfrecord_test_size) #[pcd, axis_angle_single, tw_single, angle_single, rgb_single, style]
         self.x_size_test = self.ds_test.size()
         self.ds_test = PrefetchData(ds=self.ds_test, nr_prefetch=buffer_size, nr_proc=parall_num)
         self.ds_test = PrefetchDataZMQ(ds=self.ds_test, nr_proc=parall_num)
