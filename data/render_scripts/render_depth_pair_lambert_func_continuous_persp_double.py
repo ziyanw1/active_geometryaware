@@ -19,7 +19,7 @@ import mathutils
 # nice -n 10 blender blank.blend -b -P render_depth_pair_lambert_func.py -- 02958343 MODEL RES views model_id
 
 BASE_OUT_DIR = '../data_cache/'
-BASE_OUT_DIR = '/projects/katefgroup/ziyan/'
+#BASE_OUT_DIR = '/projects/katefgroup/ziyan/'
 res_list = [128]
 
 ## transfer Z to inverse Z
@@ -175,7 +175,7 @@ camera.data.type = "PERSP"
 print('aad', camera.data.lens, 'sensor_HW', camera.data.sensor_height, camera.data.sensor_width)
 camera.data.lens = 92
 #camera.data.sensor_width = 49.303
-camera.data.sensor_width = 49.303*1.5
+camera.data.sensor_width = 49.303
 camera.data.sensor_height = camera.data.sensor_width
 
 # compositor nodes
@@ -266,8 +266,8 @@ scene.world.light_settings.ao_factor = 0.05
 bpy.ops.import_scene.obj(filepath=shape_file1) 
 
 ## translate and rotate objects here
-rho_max = 0.5
-rho_min = 0.4
+rho_max = 0.25
+rho_min = 0.15
 theta_pool = np.linspace(0, 180, 19)
 theta = np.random.choice(theta_pool)
 rho1 = np.random.uniform(rho_min, rho_max)
@@ -277,6 +277,14 @@ translation2 = (rho2*np.cos(np.deg2rad(theta+180)), rho2*np.sin(np.deg2rad(theta
 for name in bpy.data.objects.keys():
     if name not in ['Camera', 'Lamp']:
         bpy.data.objects[name].location = bpy.data.objects[name].location + mathutils.Vector(translation1)
+        bpy.data.objects[name].scale = (0.5, 0.5, 0.5)
+
+## dump object 1
+for res in res_list:
+    base_path = BASE_OUT_DIR + 'blender_renderings/'
+    save_path = base_path + "res{1}_{2}/{0}".format(BUFFER,res,NAME)
+    target_file1 = '{}/obj1.obj'.format(save_path) 
+    bpy.ops.export_scene.obj(filepath=target_file1)
 
 for obj in bpy.data.objects:
     obj.select = True
@@ -295,6 +303,7 @@ for name in bpy.data.objects.keys():
     if name not in ['Camera', 'Lamp']:
         if hasattr(bpy.data.objects[name], 'pass_index') and bpy.data.objects[name].pass_index != 1:
             bpy.data.objects[name].location = bpy.data.objects[name].location + mathutils.Vector(translation2)
+            bpy.data.objects[name].scale = (0.5, 0.5, 0.5)
 ## 
 
 print("================= OBJ file loaded sucessfully!=================")
@@ -338,9 +347,9 @@ rho = 2
 # azim_all = azim0 + np.random.normal(loc=0., scale=10., size=(VIEWS,))
 
 ## version _all
-azim_all = np.linspace(0, 360, 4)
+azim_all = np.linspace(0, 360, 19)
 azim_all = azim_all[0:-1]
-elev_all = np.linspace(10, 60, 2)
+elev_all = np.linspace(20, 60, 3)
 ### version _new
 #azim_all = np.linspace(0, 360, 13)
 #azim_all = azim_all[0:-1]
@@ -350,94 +359,148 @@ elev_all = np.linspace(10, 60, 2)
 # elev_all = elev0 + np.random.normal(loc=0., scale=10., size=(VIEWS,))
 # elev_all[0] = elev0
 
-for bkg in range(1):
-    for res in res_list:
-        scene.render.resolution_x = res
-        scene.render.resolution_y = res
-        scene.render.resolution_percentage = 100
-        base_path = BASE_OUT_DIR + 'blender_renderings/'
-        #save_path = base_path + "{2}/res{1}_continuous_0712_infiniteBkg/{0}".format(MODEL,res,CATEGORY)
-        #save_path = base_path + "{2}/res{1}_continuous_0930_persp_iphonev2/{0}".format(MODEL,res,CATEGORY)
-        save_path = base_path + "res{1}_{2}/{0}".format(BUFFER,res,NAME)
-        #save_path = base_path + "{2}/res{1}_debug_perspInfinite/{0}".format(MODEL,res,CATEGORY)
-        #save_path = base_path + "{2}/debug_persp/{0}".format(MODEL,res,CATEGORY)
-        if os.path.exists(save_path):
-            shutil.rmtree(save_path)
 
-        if not os.path.isdir(save_path):
-            os.makedirs(save_path)
-            
-        for i in range(azim_all.shape[0]):
-            for j in range(elev_all.shape[0]):
-                azim = azim_all[i]
-                elev = elev_all[j]
-                theta = 0.
-                camPos = objectCenteredCamPos(rho,azim,elev)
-                q1 = camPosToQuaternion(camPos)
-                q2 = camRotQuaternion(camPos,theta)
-                q = quaternionProduct(q2,q1)
-                Rt,R_extr, q_extr,t_extr, t_bcam2world = cameraExtrinsicMatrix(q,camPos)
-
-                camera.rotation_mode = "QUATERNION"
-                camera.location[0] = camPos[0] #+ t_bcam2world[0]
-                camera.location[1] = camPos[1] #+t_bcam2world[1]
-                camera.location[2] = camPos[2] #+t_bcam2world[2]
-                camera.rotation_quaternion[0] = q[0]
-                camera.rotation_quaternion[1] = q[1]
-                camera.rotation_quaternion[2] = q[2]
-                camera.rotation_quaternion[3] = q[3]
-                camera.data.sensor_height = camera.data.sensor_width
-
-                P = projectionMatrix(scene,camera)
-                # q = np.nan_to_num(q)
-                # q_extr = np.nan_to_num(q_extr)
-
-                scene.render.filepath = "{0}temp.png".format(fo.base_path)
-                bpy.ops.render.render(write_still=True)
-
-                invZ = get_inverse_depth("{0}/Z0001.exr".format(fo.base_path), res)
-                #shutil.copyfile("{0}/Z0001.exr".format(fo.base_path),"{0}/{1}_{2}.exr".format(save_path,int(azim),int(elev)))
-                #shutil.copyfile("{0}/RGB0001.exr".format(fo.base_path),"{0}/{1}_{2}_rgb.exr".format(save_path,int(azim),int(elev)))
-                sm.imsave("{0}/invZ_{1}_{2}.png".format(save_path,int(azim),int(elev)) , invZ)
-                np.save("{0}/invZ_{1}_{2}.npy".format(save_path,int(azim),int(elev)) , invZ)
-                shutil.copyfile(scene.render.filepath,"{0}/RGB_{1}_{2}.png".format(save_path,int(azim),int(elev)))
-
-                q_extr_list.append(np.array(q_extr))
-                t_extr_list.append(np.array(t_extr))
-                angles_list.append(np.stack([azim, elev, theta]))
-                R_extr_list.append(np.array(R_extr))
-
-                ## render mask and seg map
-                bpy.context.scene.render.layers["RenderLayer"].use_pass_object_index = True
-                scene.render.filepath = "{0}temp.png".format(fo.base_path)
-                bpy.ops.render.render(write_still=True)
-                mask1 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx10001.png'))
-                mask1 = mask1[:,:,0] * mask1[:,:,3]
-                idx_in_mask1 = np.argwhere(mask1 > 0)
-                bbox_y11, bbox_x11 = idx_in_mask1.min(axis=0) 
-                bbox_y12, bbox_x12 = idx_in_mask1.max(axis=0)
-                bbox1 = np.asarray([bbox_x11, bbox_y11, bbox_x12, bbox_y12])
-                
-                mask2 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx20001.png'))
-                mask2 = mask2[:,:,0] * mask2[:,:,3]
-                idx_in_mask2 = np.argwhere(mask2 > 0)
-                bbox_y21, bbox_x21 = idx_in_mask2.min(axis=0) 
-                bbox_y22, bbox_x22 = idx_in_mask2.max(axis=0)
-                bbox2 = np.asarray([bbox_x21, bbox_y21, bbox_x22, bbox_y22])
-                bg = ((np.ones_like(mask1)-mask1-mask2) > 0).astype(mask1.dtype)
-                sm.imsave(
-                    "{0}/SEG_{1}_{2}.png".format(save_path,int(azim),int(elev)),
-                    np.stack([mask1, mask2, bg], axis = 2)*255.0
-                )
-                save_dict = {'bbox1': bbox1, 'bbox2': bbox2}
-                scipy.io.savemat('{}/anno_{}_{}.mat'.format(save_path, int(azim), int(elev)), save_dict)
-                bpy.context.scene.render.layers["RenderLayer"].use_pass_object_index = False
-
-        trans_path = "{0}/trans_per.mat".format(save_path)
-        save_dict = {'theta': theta, 'translation1': translation1, 'translation2': translation2,
-            'angles_list':np.stack(angles_list), 'R_extr_list':np.stack(R_extr_list),'q_extr_list':np.stack(q_extr_list),
-            't_extr_list':np.array(t_extr_list)}
-        scipy.io.savemat(trans_path, save_dict)
+#for bkg in range(1):
+#    for res in res_list:
+#        scene.render.resolution_x = res
+#        scene.render.resolution_y = res
+#        scene.render.resolution_percentage = 100
+#        base_path = BASE_OUT_DIR + 'blender_renderings/'
+#        #save_path = base_path + "{2}/res{1}_continuous_0712_infiniteBkg/{0}".format(MODEL,res,CATEGORY)
+#        #save_path = base_path + "{2}/res{1}_continuous_0930_persp_iphonev2/{0}".format(MODEL,res,CATEGORY)
+#        save_path = base_path + "res{1}_{2}/{0}".format(BUFFER,res,NAME)
+#        #save_path = base_path + "{2}/res{1}_debug_perspInfinite/{0}".format(MODEL,res,CATEGORY)
+#        #save_path = base_path + "{2}/debug_persp/{0}".format(MODEL,res,CATEGORY)
+#        if os.path.exists(save_path):
+#            shutil.rmtree(save_path)
+#
+#        if not os.path.isdir(save_path):
+#            os.makedirs(save_path)
+#        ## dump category
+#        category_file = base_path+"res{1}_{2}/{0}/catgory.txt".format(BUFFER,res,NAME)
+#        category_lines = []
+#        category_lines.append(CATEGORY1+'\n')
+#        category_lines.append(CATEGORY2+'\n')
+#        with open(category_file, 'w') as f:
+#            f.writelines(category_lines)
+#            
+#        for i in range(azim_all.shape[0]):
+#            for j in range(elev_all.shape[0]):
+#                azim = azim_all[i]
+#                elev = elev_all[j]
+#                theta = 0.
+#                camPos = objectCenteredCamPos(rho,azim,elev)
+#                q1 = camPosToQuaternion(camPos)
+#                q2 = camRotQuaternion(camPos,theta)
+#                q = quaternionProduct(q2,q1)
+#                Rt,R_extr, q_extr,t_extr, t_bcam2world = cameraExtrinsicMatrix(q,camPos)
+#
+#                camera.rotation_mode = "QUATERNION"
+#                camera.location[0] = camPos[0] #+ t_bcam2world[0]
+#                camera.location[1] = camPos[1] #+t_bcam2world[1]
+#                camera.location[2] = camPos[2] #+t_bcam2world[2]
+#                camera.rotation_quaternion[0] = q[0]
+#                camera.rotation_quaternion[1] = q[1]
+#                camera.rotation_quaternion[2] = q[2]
+#                camera.rotation_quaternion[3] = q[3]
+#                camera.data.sensor_height = camera.data.sensor_width
+#
+#                P = projectionMatrix(scene,camera)
+#                # q = np.nan_to_num(q)
+#                # q_extr = np.nan_to_num(q_extr)
+#
+#                scene.render.filepath = "{0}temp.png".format(fo.base_path)
+#                bpy.ops.render.render(write_still=True)
+#
+#                invZ = get_inverse_depth("{0}/Z0001.exr".format(fo.base_path), res)
+#                #shutil.copyfile("{0}/Z0001.exr".format(fo.base_path),"{0}/{1}_{2}.exr".format(save_path,int(azim),int(elev)))
+#                #shutil.copyfile("{0}/RGB0001.exr".format(fo.base_path),"{0}/{1}_{2}_rgb.exr".format(save_path,int(azim),int(elev)))
+#                sm.imsave("{0}/invZ_{1}_{2}.png".format(save_path,int(azim),int(elev)) , invZ)
+#                np.save("{0}/invZ_{1}_{2}.npy".format(save_path,int(azim),int(elev)) , invZ)
+#                shutil.copyfile(scene.render.filepath,"{0}/RGB_{1}_{2}.png".format(save_path,int(azim),int(elev)))
+#
+#                q_extr_list.append(np.array(q_extr))
+#                t_extr_list.append(np.array(t_extr))
+#                angles_list.append(np.stack([azim, elev, theta]))
+#                R_extr_list.append(np.array(R_extr))
+#
+#                ## render mask and seg map
+#                bpy.context.scene.render.layers["RenderLayer"].use_pass_object_index = True
+#                scene.render.filepath = "{0}temp.png".format(fo.base_path)
+#                bpy.ops.render.render(write_still=True)
+#                mask1 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx10001.png'))
+#                mask1 = mask1[:,:,0] * mask1[:,:,3]
+#                idx_in_mask1 = np.argwhere(mask1 > 0)
+#                bbox_y11, bbox_x11 = idx_in_mask1.min(axis=0) 
+#                bbox_y12, bbox_x12 = idx_in_mask1.max(axis=0)
+#                bbox1 = np.asarray([bbox_x11, bbox_y11, bbox_x12, bbox_y12])
+#                
+#                mask2 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx20001.png'))
+#                mask2 = mask2[:,:,0] * mask2[:,:,3]
+#                idx_in_mask2 = np.argwhere(mask2 > 0)
+#                bbox_y21, bbox_x21 = idx_in_mask2.min(axis=0) 
+#                bbox_y22, bbox_x22 = idx_in_mask2.max(axis=0)
+#                bbox2 = np.asarray([bbox_x21, bbox_y21, bbox_x22, bbox_y22])
+#                bg = ((np.ones_like(mask1)-mask1-mask2) > 0).astype(mask1.dtype)
+#                sm.imsave(
+#                    "{0}/SEG_{1}_{2}.png".format(save_path,int(azim),int(elev)),
+#                    np.stack([mask1, mask2, bg], axis = 2)*255.0
+#                )
+#                save_dict = {'bbox1': bbox1, 'bbox2': bbox2}
+#                scipy.io.savemat('{}/anno_{}_{}.mat'.format(save_path, int(azim), int(elev)), save_dict)
+#
+#                ## render amodal segmentation
+#                delta = 1000.0
+#                delta = mathutils.Vector((delta, delta, delta))
+#                
+#                #1. move obj 1 out of the way
+#                for obj in bpy.data.objects:
+#                    obj.select = True
+#                    if 'mesh' in obj.name:
+#                        if obj.pass_index == idx1:
+#                            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location + delta
+#                    obj.select = False
+#                bpy.ops.render.render( write_still=True )
+#                amodal2 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx20001.png'))
+#
+#                #2. move obj 1 back into place
+#                for obj in bpy.data.objects:
+#                    obj.select = True
+#                    if 'mesh' in obj.name:
+#                        if obj.pass_index == idx1:
+#                            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location - delta
+#                    obj.select = False
+#                
+#                #3. move obj 2 out of place
+#                for obj in bpy.data.objects:
+#                    obj.select = True
+#                    if 'mesh' in obj.name:
+#                        if obj.pass_index == idx2:
+#                            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location + delta
+#                    obj.select = False
+#                bpy.ops.render.render( write_still=True )
+#                amodal1 = sm.imread(BASE_OUT_DIR + "tmp/buffer/{}/{}".format(BUFFER, 'idx10001.png'))
+#                #4. move obj 2 back into place (for completeness... this is optional)
+#                for obj in bpy.data.objects:
+#                    obj.select = True
+#                    if 'mesh' in obj.name:
+#                        if obj.pass_index == idx2:
+#                            bpy.data.objects[obj.name].location = bpy.data.objects[obj.name].location - delta
+#                    obj.select = False
+#                amodal1 = amodal1[:,:,0] * amodal1[:,:,3]
+#                amodal2 = amodal2[:,:,0] * amodal2[:,:,3]
+#                bg = np.logical_and(amodal1 == 0, amodal2 == 0)
+#                sm.imsave(
+#                    '{0}/amodal_{1}_{2}.png'.format(save_path,int(azim),int(elev)),
+#                    np.stack([amodal1, amodal2, bg], axis = 2)*255.0
+#                )
+#                bpy.context.scene.render.layers["RenderLayer"].use_pass_object_index = False
+#
+#        trans_path = "{0}/trans_per.mat".format(save_path)
+#        save_dict = {'theta': theta, 'translation1': translation1, 'translation2': translation2,
+#            'angles_list':np.stack(angles_list), 'R_extr_list':np.stack(R_extr_list),'q_extr_list':np.stack(q_extr_list),
+#            't_extr_list':np.array(t_extr_list)}
+#        scipy.io.savemat(trans_path, save_dict)
 
     #if bkg == 0:
     #    bpy.data.objects['cobble'].select = True
@@ -449,8 +512,20 @@ for bkg in range(1):
 #os.close(1)
 #os.dup(old)
 #os.close(old)
+## dump scene
 target_file = '{}/scene.obj'.format(save_path) 
 bpy.ops.export_scene.obj(filepath=target_file)
+## delete object 1
+#2. move obj 1 back into place
+for obj in bpy.data.objects:
+    if obj.pass_index == idx1:
+        obj.select = True
+bpy.ops.object.delete()
+## dump object 2
+for res in res_list:
+    save_path = base_path + "res{1}_{2}/{0}".format(BUFFER,res,NAME)
+    target_file2 = '{}/obj2.obj'.format(save_path) 
+    bpy.ops.export_scene.obj(filepath=target_file2)
 
 # clean up
 for o in bpy.data.objects:
