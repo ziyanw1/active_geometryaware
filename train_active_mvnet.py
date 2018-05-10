@@ -744,7 +744,7 @@ def dump_outputs(save_dict, train_i, i_idx, mode=''):
         save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
         seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
         save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
-    
+
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
     s = vox.shape[0]

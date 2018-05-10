@@ -668,8 +668,8 @@ class ActiveMVnet(object):
         pull_loss += avg_dist(obj1_feats, obj1_feats)
         pull_loss += avg_dist(obj2_feats, obj2_feats)
 
-        push_loss = other.tfpy.print_val(push_loss, 'push_loss')
-        pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
+        #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
+        #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
 
         total_loss = push_loss + pull_loss
 

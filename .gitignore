@@ -12,3 +12,4 @@ voxels
 *.pyc
 *.npy
 *.nfs*
+log_agent_all
