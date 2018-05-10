@@ -1101,7 +1101,12 @@ class MVInputs(object):
     def put_voxel(self, voxel, batch_idx = 0):
         assert 0 <= batch_idx < self.BS
         self.vox[batch_idx, ...] = voxel
-        
+
+    def put_seg(self, seg1, seg2, batch_idx = 0):
+        assert 0 <= batch_idx < self.BS
+        self.seg1[batch_idx, ...] = seg1
+        self.seg2[batch_idx, ...] = seg2
+
     def put(self, single_mvinput, episode_idx, batch_idx = 0):
         assert 0 <= batch_idx < self.BS
         assert 0 <= episode_idx < self.FLAGS.max_episode_length

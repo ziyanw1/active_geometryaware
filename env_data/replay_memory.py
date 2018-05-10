@@ -409,9 +409,16 @@ class ReplayMemory():
             if self.FLAGS.category == '1111':
                 category_, model_id_ = model_id.split('/')
                 voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(category_, model_id_))
+                
             voxel = self.read_vox(voxel_name)
-
             mvinputs.put_voxel(voxel, batch_idx = b_idx)
+            
+            if self.FLAGS.category = '3333': #this is the only categ for which we have seg data
+                seg1_name = os.path.join('voxels', '{}/{}/obj1.binvox'.format(self.FLAGS.category, model_id))
+                seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(self.FLAGS.category, model_id))
+                seg1 = self.read_vox(seg1_name)
+                seg2 = self.read_vox(seg2_name)
+                mvinputs.put_segs(seg1, seg2, batch_idx = b_idx)
 
             for l_idx in range(self.max_episode_length):
                 
