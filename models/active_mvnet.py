@@ -91,7 +91,7 @@ class ActiveMVnet(object):
         self.penalty_list_test = self.test_provider.penalty_ph
         self.vox_test = self.test_provider.vox_ph
         self.seg1_test = self.test_provider.seg1_ph
-        self.seg2_test = self.test_provider.seg2_ph        
+        self.seg2_test = self.test_provider.seg2_ph
 
     def _create_ground_truth_voxels(self):
         az0_train = self.azimuth_list_batch[:,0,0]
@@ -850,18 +850,43 @@ class ActiveMVnet(object):
             burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last', 'opt_critic']
         elif self.FLAGS.burin_opt == 2:
             burnin_list = basic_list[:] + ['opt_recon_first','critic_loss', 'recon_loss_first']
-        train_list = basic_list[:] + ['loss_act_regu', 'opt_rein_recon', 'merged_train', 'opt_reinforce',
-            'action_list_batch', 'IoU_list_batch']
+            
+        train_list = basic_list[:] + [
+            'loss_act_regu',
+            'opt_rein_recon',
+            'merged_train',
+            'opt_reinforce',
+            'action_list_batch',
+            'IoU_list_batch'
+        ]
+        
         train_mvnet_list = basic_list[:] + ['opt_recon_last', 'merged_train']
-        train_dqn_list = basic_list[:] + ['opt_reinforce', 'opt_recon_last', 'loss_act_regu', 'merged_train']
-        train_dqn_only_list = basic_list[:] + ['opt_reinforce', 'loss_act_regu', 'merged_train', 'action_list_batch',
-            'IoU_list_batch', 'indexes', 'responsible_action']
+        
+        train_dqn_list = basic_list[:] + [
+            'opt_reinforce',
+            'opt_recon_last',
+            'loss_act_regu',
+            'merged_train'
+        ]
+        
+        train_dqn_only_list = basic_list[:] + [
+            'opt_reinforce',
+            'loss_act_regu',
+            'merged_train',
+            'action_list_batch',
+            'IoU_list_batch',
+            'indexes',
+            'responsible_action'
+        ]
+
+        debug_list = basic_list[:] + ['seg1_batch']
 
         self.burnin_collection = dict2obj(dct_from_keys(burnin_list))
         self.train_collection = dict2obj(dct_from_keys(train_list))
         self.train_mvnet_collection = dict2obj(dct_from_keys(train_mvnet_list))
         self.train_dqn_collection = dict2obj(dct_from_keys(train_dqn_list))
         self.train_dqn_only_collection = dict2obj(dct_from_keys(train_dqn_only_list))
+        self.debug_collection = dict2obj(dct_from_keys(debug_list))
             
     def get_placeholders(self, include_vox, include_action, include_penalty, train_mode):
         
@@ -974,6 +999,10 @@ class ActiveMVnet(object):
             collection_to_run = self.train_dqn_collection
         elif mode == 'train_dqn_only':
             collection_to_run = self.train_dqn_only_collection
+        elif mode == 'debug':
+            collection_to_run = self.debug_collection
+        else:
+            raise Exception('invalid mode')
 
         return self.run_collection_with_fd(collection_to_run, feed_dict)
 
