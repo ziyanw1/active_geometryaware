@@ -68,6 +68,7 @@ flags.DEFINE_integer('restore_iter', 0, '')
 flags.DEFINE_boolean('pretrain_restore', False, 'If resume from checkpoint')
 flags.DEFINE_string('pretrain_restore_path', 'log_agent/pretrain_models/pretrain_model.ckpt-5', '')
 flags.DEFINE_string('ae_file', '', '')
+flags.DEFINE_boolean('use_gt', True, '')
 # train (green)
 flags.DEFINE_integer('num_point', 2048, 'Point Number [256/512/1024/2048] [default: 1024]')
 flags.DEFINE_integer('resolution', 128, '')
@@ -344,7 +345,7 @@ def train(active_mv):
             print('Evaluating active policy')
             evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx+1, rollout_obj, mode='active')
             print('Evaluating random policy')
-            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx+1, rollout_obj, mode='random')
+            evaluate(active_mv, FLAGS.test_episode_num, replay_mem, i_idx+1, rollout_obj, mode='oneway')
         
         # #R_list[0, ...] = replay_mem.get_R(state[0][0], state[1][0])
         # ## TODO: 
