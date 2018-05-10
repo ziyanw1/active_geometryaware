@@ -22,7 +22,10 @@ cat_name = {
     # "04530566",
     "02958343" : "car",
     "03797390": "mug", 
-    "0000": "combine"
+    "0000": "combine",
+    "1111": "1111",
+    "2222": "double_mug",
+    "3333": "mix4_all"
 }
 
 azim_all = np.linspace(0, 360, 37)
@@ -43,9 +46,13 @@ class ShapeNetEnv():
         self.lists_dir = 'data/render_scripts/lists/{}_lists/'.format(self.category) 
         with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.train_filename_prefix), 'r') as f:
             self.train_list = f.read().splitlines()
+            if FLAGS.category == '1111':
+                np.random.shuffle(self.train_list)
         
         with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.val_filename_prefix), 'r') as f:
             self.val_list = f.read().splitlines()
+            if FLAGS.category == '1111':
+                np.random.shuffle(self.val_list)
         
         with open(self.lists_dir+'{}_idx.txt'.format(FLAGS.test_filename_prefix), 'r') as f:
             self.test_list = f.read().splitlines()
@@ -53,6 +60,11 @@ class ShapeNetEnv():
         
         self.data_dir = 'data/data_cache/blender_renderings/{}/res{}_{}_all/'.format(self.category,
             FLAGS.resolution, cat_name[self.category])
+        if self.category == '1111':
+            self.data_dir = '/projects/katefgroup/ziyan/blender_renderings/'
+        elif self.category == '2222' or self.category == '3333':
+            self.data_dir = 'data/data_cache/blender_renderings/res{}_{}'.format(FLAGS.resolution,
+                cat_name[self.category])
 
         self.trainval_list = self.train_list + self.val_list
         self.train_len = len(self.trainval_list)
@@ -64,13 +76,17 @@ class ShapeNetEnv():
         self.prev_azims = []
         self.prev_elevs = []
         self.test_count = 0
-        self.test_azims = np.random.choice(azim_for_init, size=(self.test_len, 1))
-        self.test_elevs = np.random.choice(elev_for_init, size=(self.test_len, 1))
+        self.azim_for_init = azim_for_init
+        if self.category == '2222' or self.category == '3333':
+            azim_for_init_new = np.linspace(0, 360, 10)
+            self.azim_for_init = azim_for_init_new[:-1]
+            print azim_for_init_new
+        self.elev_for_init = elev_for_init
+        self.test_azims = np.random.choice(self.azim_for_init, size=(self.test_len, 1))
+        self.test_elevs = np.random.choice(self.elev_for_init, size=(self.test_len, 1))
         self.action_space_n = 8
         self.azim_all = azim_all
         self.elev_all = elev_all
-        self.azim_for_init = azim_for_init
-        self.elev_for_init = elev_for_init
 
     def reset(self, is_training, test_idx=0):
         self.step_count = 0
@@ -80,18 +96,30 @@ class ShapeNetEnv():
             rand_idx = np.random.randint(0, self.train_len) 
             self.current_model = self.trainval_list[rand_idx]
             #self.current_azim = np.random.choice(azim_all)
-            self.current_azim = np.random.choice(azim_for_init)
+            self.current_azim = np.random.choice(self.azim_for_init)
             #self.current_elev = np.random.choice(elev_all)
-            self.current_elev = np.random.choice(elev_for_init)
+            self.current_elev = np.random.choice(self.elev_for_init)
         else:
             if self.FLAGS.debug_train:
                 t_idx = min(test_idx, self.train_len)
                 self.current_model = self.trainval_list[t_idx]
             else:
-                t_idx = min(test_idx, self.test_len)
+                if self.FLAGS.category == '2222' or self.FLAGS.category == '3333':
+                    t_idx = test_idx % self.test_len
+                t_idx = min(test_idx%self.test_len, self.test_len-1)
                 self.current_model = self.test_list[t_idx]
-            self.current_azim = self.test_azims[t_idx]
-            self.current_elev = self.test_elevs[t_idx]
+            if test_idx >= self.test_len:
+                self.current_azim = np.mod(self.test_azims[t_idx]+80, 360)
+                self.current_elev = np.mod(self.test_elevs[t_idx], 360)
+            else:
+                self.current_azim = np.mod(self.test_azims[t_idx], 360)
+                self.current_elev = np.mod(self.test_elevs[t_idx], 360)
+            #if test_idx >= self.test_len:
+            #    self.current_azim += 80
+            #    self.current_azim = np.mod(self.current_azim, 360)
+            #    if self.current_azim > 360:
+            #        print 'error'
+            #        sye.exit()
 
         if self.FLAGS.debug_single:
             self.current_model = self.trainval_list[0]
@@ -107,6 +135,8 @@ class ShapeNetEnv():
 
         MAX_ELEV = np.float(60.0)
         MIN_ELEV = np.float(10.0)
+        if self.FLAGS.category == '2222' or self.FLAGS.category == '3333':
+            MIN_ELEV=np.float(20)
         DELTA = self.FLAGS.delta
         
         if action == 0:

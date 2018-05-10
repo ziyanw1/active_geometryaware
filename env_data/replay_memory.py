@@ -37,7 +37,9 @@ cat_name = {
     "02958343" : "car",
     "03797390": "mug",
     "0000": "combine",
-    "1111": "1111"
+    "1111": "1111",
+    "2222": "double_mug",
+    "3333": "mix4_all"
 }
 
 class ReplayMemory():
@@ -53,6 +55,9 @@ class ReplayMemory():
             cat_name[self.FLAGS.category])
         if self.FLAGS.category == '1111':
             self.data_dir = '/projects/katefgroup/ziyan/blender_renderings/'
+        elif self.FLAGS.category == '2222' or self.FLAGS.category == '3333':
+            self.data_dir = 'data/data_cache/blender_renderings/res{}_{}'.format(FLAGS.resolution,
+                cat_name[self.FLAGS.category])
 
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -167,6 +172,8 @@ class ReplayMemory():
             category, model_id = model_id.split('/')
             invZ_path = os.path.join(self.data_dir, '{}/res{}_1111_all/{}'.format(category, self.FLAGS.resolution,
                 model_id), invZ_name)
+        if not self.FLAGS.use_gt:
+            invZ_path = 'results/{}/{}/depth/invZ_{}_{}.npy'.format(self.FLAGS.category, model_id, int(azim), int(elev))
         invZ = np.load(invZ_path)
         if resize:
             invZ = sm.imresize(invZ, (self.FLAGS.resolution, self.FLAGS.resolution), mode = 'F', interp='nearest')
