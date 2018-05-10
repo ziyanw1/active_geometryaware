@@ -79,6 +79,8 @@ class ActiveMVnet(object):
         self.action_list_batch = self.train_provider.action_ph
         self.penalty_list_batch = self.train_provider.penalty_ph
         self.vox_batch = self.train_provider.vox_ph
+        self.seg1_batch = self.train_provider.seg1_ph
+        self.seg2_batch = self.train_provider.seg2_ph        
         
         self.RGB_list_test = self.test_provider.rgb_ph
         self.invZ_list_test = self.test_provider.invz_ph
@@ -88,6 +90,8 @@ class ActiveMVnet(object):
         self.action_list_test = self.test_provider.action_ph
         self.penalty_list_test = self.test_provider.penalty_ph
         self.vox_test = self.test_provider.vox_ph
+        self.seg1_test = self.test_provider.seg1_ph
+        self.seg2_test = self.test_provider.seg2_ph        
 
     def _create_ground_truth_voxels(self):
         az0_train = self.azimuth_list_batch[:,0,0]
@@ -1021,6 +1025,8 @@ class ShapeProvider(object):
         self.invz_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
         self.mask_shape = self.make_shape((FLAGS.resolution, FLAGS.resolution, 1))
         self.vox_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution)
+        self.seg1_shape = self.vox_shape
+        self.seg2_shape = self.vox_shape        
         
         self.azimuth_shape = self.make_shape((1,))
         self.elevation_shape = self.make_shape((1,))
@@ -1032,6 +1038,8 @@ class ShapeProvider(object):
             'invz': np.float32,
             'mask': np.float32,
             'vox': np.float32,
+            'seg1': np.float32,
+            'seg2': np.float32,            
             'azimuth': np.float32,
             'elevation': np.float32,
             'action': np.int32,
@@ -1041,14 +1049,14 @@ class ShapeProvider(object):
     def make_np_zeros(self, dest = None, suffix = '_np'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action', 'penalty']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'azimuth', 'elevation', 'action', 'penalty']:
             arr = np.zeros(getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(dest, key+suffix, arr)
 
     def make_tf_ph(self, dest = None, suffix = '_ph'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'azimuth', 'elevation', 'action', 'penalty']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'azimuth', 'elevation', 'action', 'penalty']:
             ph = tf.placeholder(shape = getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(self, key+suffix, ph)
         
