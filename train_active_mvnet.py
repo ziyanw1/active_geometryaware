@@ -159,6 +159,7 @@ flags.DEFINE_boolean('debug_mode', False, '')
 flags.DEFINE_boolean('GBL_thread', False, '')
 #whether to introduce pose noise to the unprojection
 flags.DEFINE_boolean('pose_noise', False, '')
+flags.DEFINE_boolean('use_segs', False, '')
 # some constants i moved inside
 flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')

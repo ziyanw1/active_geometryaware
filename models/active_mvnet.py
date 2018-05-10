@@ -888,7 +888,7 @@ class ActiveMVnet(object):
         self.train_dqn_only_collection = dict2obj(dct_from_keys(train_dqn_only_list))
         self.debug_collection = dict2obj(dct_from_keys(debug_list))
             
-    def get_placeholders(self, include_vox, include_action, include_penalty, train_mode):
+    def get_placeholders(self, include_vox, include_action, include_penalty, include_segs, train_mode):
         
         placeholders = lambda: None
         if train_mode:
@@ -904,6 +904,9 @@ class ActiveMVnet(object):
                 placeholders.vox = self.vox_batch
             if include_penalty:
                 placeholders.penalty = self.penalty_list_batch
+            if include_segs:
+                placeholders.seg1 = self.seg1_batch
+                placeholders.seg2 = self.seg2_batch                
 
         else:
             placeholders.rgb = self.RGB_list_test
@@ -918,12 +921,22 @@ class ActiveMVnet(object):
                 placeholders.vox = self.vox_test
             if include_penalty:
                 placeholders.penalty = self.penalty_list_test
+            if include_segs:
+                placeholders.seg1 = self.seg1_test
+                placeholders.seg2 = self.seg2_test                
 
         return placeholders
 
-    def construct_feed_dict(self, mvnet_inputs, include_vox, include_action, include_penalty, train_mode = True):
+    def construct_feed_dict(
+            self,
+            mvnet_inputs,
+            include_vox,
+            include_action,
+            include_penalty,
+            include_segs,
+            train_mode = True):
 
-        placeholders = self.get_placeholders(include_vox, include_action, include_penalty, train_mode = train_mode)
+        placeholders = self.get_placeholders(include_vox, include_action, include_penalty, include_segs, train_mode = train_mode)
 
         feed_dict = {self.is_training: train_mode}
 
@@ -937,6 +950,9 @@ class ActiveMVnet(object):
         if include_penalty:
             assert mvnet_inputs.penalty is not None
             keys.append('penalty')
+        if include_segs:
+            keys.extend(['seg1', 'seg2'])
+        
             
         for key in keys:
             feed_dict[getattr(placeholders, key)] = getattr(mvnet_inputs, key)
@@ -986,7 +1002,12 @@ class ActiveMVnet(object):
     def run_step(self, mvnet_input, mode, is_training = True):
         '''mode is one of ['burnin', 'train'] '''
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = True, include_action = True, include_penalty = True, train_mode = is_training
+            mvnet_input,
+            include_vox = True,
+            include_action = True,
+            include_penalty = True,
+            include_segs = self.FLAGS.use_segs,
+            train_mode = is_training,
         )
 
         if mode == 'burnin':
@@ -1102,7 +1123,7 @@ class MVInputs(object):
         assert 0 <= batch_idx < self.BS
         self.vox[batch_idx, ...] = voxel
 
-    def put_seg(self, seg1, seg2, batch_idx = 0):
+    def put_segs(self, seg1, seg2, batch_idx = 0):
         assert 0 <= batch_idx < self.BS
         self.seg1[batch_idx, ...] = seg1
         self.seg2[batch_idx, ...] = seg2
