@@ -302,6 +302,10 @@ def train(active_mv):
                 mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
+
+            #import ipdb
+            #ipdb.set_trace()
+            
             summs_burnin = burnin_log(i, out_stuff, time.time()-tic)
             for summ in summs_burnin:
                 active_mv.train_writer.add_summary(summ, i)
@@ -481,8 +485,15 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         if FLAGS.category == '1111':
             category_, model_id_ = model_id.split('/')
-            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(category_, model_id_))
+            voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(category_, model_id_))        
         vox_gt = replay_mem.read_vox(voxel_name)
+
+        if FLAGS.use_segs and FLAGS.category == '3333': #this is the only categ for which we have seg data
+            seg1_name = os.path.join('voxels', '{}/{}/obj1.binvox'.format(FLAGS.category, model_id))
+            seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(FLAGS.category, model_id))
+            seg1 = replay_mem.read_vox(seg1_name)
+            seg2 = replay_mem.read_vox(seg2_name)
+            mvnet_input.put_segs(seg1, seg2)
 
         mvnet_input.put_voxel(vox_gt)
         pred_out = active_mv.predict_vox_list(mvnet_input)
@@ -506,6 +517,9 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         IoU_list.append(final_IoU)
         loss_list.append(np.mean(pred_out.recon_loss_list_test))
 
+        #import ipdb
+        #ipdb.set_trace()
+        
         if FLAGS.if_save_eval:
             
             save_dict = {
@@ -514,7 +528,9 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
                 'vox_gtr': vox_gtr,
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
-                'RGB_list': mvnet_input.rgb
+                'RGB_list': mvnet_input.rgb,
+                'pred_seg1_test': pred_out.pred_seg1_test,
+                'pred_seg2_test': pred_out.pred_seg2_test,
             }
 
             dump_outputs(save_dict, train_i, i_idx, mode)
@@ -723,13 +739,19 @@ def dump_outputs(save_dict, train_i, i_idx, mode=''):
 
         img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
         other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
+
+        seg1_save_name = os.path.join(eval_dir, '{}_{}_seg1.binvox'.format(i_idx, i))
+        save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
+        seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
+        save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
     
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
+    s = vox.shape[0]
     vox = np.transpose(vox, (2, 1, 0))
     binvox_obj = other.binvox_rw.Voxels(
         vox > THRESHOLD,
-        dims = [FLAGS.voxel_resolution]*3,
+        dims = [s]*3,
         translate = [0.0, 0.0, 0.0],
         scale = 1.0,
         axis_order = 'xyz'

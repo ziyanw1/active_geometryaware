@@ -412,8 +412,9 @@ class ReplayMemory():
                 
             voxel = self.read_vox(voxel_name)
             mvinputs.put_voxel(voxel, batch_idx = b_idx)
-            
-            if self.FLAGS.category == '3333': #this is the only categ for which we have seg data
+
+            #this is the only categ for which we have seg data
+            if self.FLAGS.use_segs and self.FLAGS.category == '3333': 
                 seg1_name = os.path.join('voxels', '{}/{}/obj1.binvox'.format(self.FLAGS.category, model_id))
                 seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(self.FLAGS.category, model_id))
                 seg1 = self.read_vox(seg1_name)

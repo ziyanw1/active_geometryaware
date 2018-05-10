@@ -32,6 +32,7 @@ class ActiveMVnet(object):
         self._create_placeholders()
         self._create_ground_truth_voxels()
         self._create_network()
+        self._create_segmentation_loss()
         self._create_loss()
         #if FLAGS.is_training:
         self._create_optimizer()
@@ -114,6 +115,11 @@ class ActiveMVnet(object):
 
         self.rotated_vox_batch = rotate_voxels(self.vox_batch, az0_train, el0_train)
         self.rotated_vox_test = rotate_voxels(self.vox_test, az0_test, el0_test)
+
+        self.rotated_seg1_batch = rotate_voxels(self.seg1_batch, az0_train, el0_train)
+        self.rotated_seg2_batch = rotate_voxels(self.seg2_batch, az0_train, el0_train)        
+        self.rotated_seg1_test = rotate_voxels(self.seg1_test, az0_test, el0_test)
+        self.rotated_seg2_test = rotate_voxels(self.seg2_test, az0_test, el0_test)
         
         self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
         self.rotated_vox_list_test = tile_voxels(self.rotated_vox_test)
@@ -244,8 +250,13 @@ class ActiveMVnet(object):
             #debug = int(vox_feat.get_shape().as_list()[0]) > self.FLAGS.max_episode_length
             debug = False
             with tf.variable_scope(scope_name, reuse = reuse):
-                return other.nets.voxel_net_3d_v2(vox_feat, bn = if_bn, bn_trainmode=self.is_training, 
-                    freeze_decoder=not trainable, return_logits = True, debug = debug)
+                return other.nets.voxel_net_3d_v2(
+                    vox_feat, bn = if_bn, bn_trainmode=self.is_training,
+                    freeze_decoder=not trainable,
+                    return_logits = True, return_feats = True,
+                    debug = debug
+                )
+            
         elif self.FLAGS.unet_name == 'U_VALID_SPARSE':
             return other.nets.unet_valid_sparese(
                 vox_feat, mask, channels, self.FLAGS, trainable = trainable, if_bn = if_bn, reuse = reuse,
@@ -372,7 +383,7 @@ class ActiveMVnet(object):
             
             vox_feat_unstack = tf.unstack(self.vox_feat_list, axis=1)
             mask_grid_unstack = tf.unstack(self.unproj_grid_mask, axis=1)
-            vox_pred_first, vox_logits_first = self._create_unet3d(
+            outputs = self._create_unet3d(
                 vox_feat_unstack[0],
                 mask_grid_unstack[0], 
                 channels=self.FLAGS.agg_channels,
@@ -380,7 +391,11 @@ class ActiveMVnet(object):
                 if_bn=self.FLAGS.if_bn,
                 scope_name='unet_3d'
             )
-
+            if self.FLAGS.use_segs:
+                vox_pred_first, vox_logits_first, vox_feats_first = outputs
+            else:
+                vox_pred_first, vox_logits_first = outputs
+                
             unet_3d_reuse = lambda (x, y): self._create_unet3d(
                 x,
                 y,
@@ -399,11 +414,25 @@ class ActiveMVnet(object):
                 reuse=True,
                 scope_name='unet_3d'
             )
-            vox_pred_follow, vox_logits_follow = tf.map_fn(unet_3d_reuse, (tf.stack(vox_feat_unstack[1:]), 
-                tf.stack(mask_grid_unstack[1:])), dtype=(tf.float32, tf.float32))
+
+            out_type = (tf.float32, tf.float32, tf.float32) if self.FLAGS.use_segs else (tf.float32, tf.float32)
+            outputs = tf.map_fn(
+                unet_3d_reuse,
+                (tf.stack(vox_feat_unstack[1:]), tf.stack(mask_grid_unstack[1:])),
+                dtype=out_type
+            )
+
+            if self.FLAGS.use_segs:
+                vox_pred_follow, vox_logits_follow, vox_feats_follow = outputs
+            else:
+                vox_pred_follow, vox_logits_follow = outputs
+                
             self.vox_list_pred = tf.stack([vox_pred_first]+tf.unstack(vox_pred_follow), axis=1)
             self.vox_list_logits = tf.stack([vox_logits_first]+tf.unstack(vox_logits_follow), axis=1)
 
+            if self.FLAGS.use_segs:
+                self.vox_list_feats = tf.stack([vox_feats_first]+tf.unstack(vox_feats_follow), axis=1)
+            
             #self.vox_feat = collapse_dims(self.vox_feat_list) ## [BSxEP, V, V, V, CH]
             #self.vox_pred, vox_logits = self._create_unet3d(
             #    self.vox_feat,
@@ -430,12 +459,23 @@ class ActiveMVnet(object):
             vox_feat_test_unstack = tf.unstack(self.vox_feat_list_test, axis=1)
             mask_grid_test_unstack = tf.unstack(self.unproj_grid_mask_test, axis=1)
 
-            vox_pred_test_all, vox_logits_test_all = tf.map_fn(unet_3d_reuse_test, (tf.stack(vox_feat_test_unstack), 
-                tf.stack(mask_grid_test_unstack)), dtype=(tf.float32, tf.float32))
+            outputs = tf.map_fn(
+                unet_3d_reuse_test,
+                (tf.stack(vox_feat_test_unstack), tf.stack(mask_grid_test_unstack)),
+                dtype=out_type
+            )
+
+            if self.FLAGS.use_segs:
+                vox_pred_test_all, vox_logits_test_all, vox_feats_test_all = outputs                
+            else:
+                vox_pred_test_all, vox_logits_test_all = outputs
 
             self.vox_pred_test_ = tf.stack(tf.unstack(vox_pred_test_all), axis=1)
             self.vox_pred_test = tf.squeeze(self.vox_pred_test_)
             self.vox_list_test_logits = tf.stack(tf.unstack(vox_logits_test_all), axis=1)
+
+            if self.FLAGS.use_segs:
+                self.vox_test_feats = tf.stack(tf.unstack(vox_feats_test_all), axis=1)
             
             #self.vox_feat_test = collapse_dims(self.vox_feat_list_test)
             #self.vox_pred_test, vox_test_logits = self._create_unet3d(
@@ -544,7 +584,115 @@ class ActiveMVnet(object):
         rotate_func = lambda x: rotate_voxels(x, az0_test, el0_test) 
         #print self.vox_pred_test.get_shape().as_list()
         self.vox_pred_test_rot = tf.map_fn(rotate_func, tf.stack(tf.unstack(tf.expand_dims(self.vox_pred_test, axis=0),
-            axis=1))) 
+            axis=1)))
+
+    def _create_segmentation_loss(self):
+        
+        self.seg_train_loss = self.__create_segmentation_loss(
+            self.rotated_vox_batch,
+            self.rotated_seg1_batch,
+            self.rotated_seg2_batch,
+            self.vox_list_feats,
+            'train'
+        )
+        self.seg_test_loss = self.__create_segmentation_loss(
+            self.rotated_vox_test,
+            self.rotated_seg1_test,
+            self.rotated_seg2_test,
+            self.vox_test_feats,
+            'test'
+        )
+
+    def __create_segmentation_loss(self, vox, seg1, seg2, feats, suffix):
+        #feats contains feats 1, 2, 3, and 4 viewds
+        #we would like to tile vox and collapse everything into one nice batch...
+
+        def collapse_time(x):
+            shp = list(x.shape)
+            a = shp.pop(0)
+            b = shp.pop(0)
+            shp = [a*b] + shp
+            x = tf.reshape(x, shp)
+            return x
+        
+        def time_tile(x):
+            x = tf.expand_dims(x, 1)
+            x = tf.tile(x, [1, self.FLAGS.max_episode_length, 1, 1, 1, 1])
+            return collapse_time(x)
+            
+        vox = time_tile(vox)
+        seg1 = time_tile(seg1)
+        seg2 = time_tile(seg2)
+        feats = collapse_time(feats)
+
+        bg = 1.0 - vox
+        bg = other.tfutil.pool3d(bg)
+        seg1 = other.tfutil.pool3d(seg1)
+        seg2 = other.tfutil.pool3d(seg2)
+
+        return self.create_segmentation_loss(bg, seg1, seg2, feats, suffix)
+
+    def create_segmentation_loss(self, bg, obj1, obj2, feats, suffix):
+
+        BS = int(bg.shape[0])
+        
+        feature_tensor = feats
+        feature_tensor = other.tfutil.unitize(feature_tensor)
+        D = feature_tensor.shape[-1]
+
+        flat_features = tf.reshape(feature_tensor, (BS, -1, D))
+
+        def avg_dist(feats1, feats2):
+            distmat = other.chamfer.batch_dist_mat(feats1, feats2)
+            return tf.reduce_mean(distmat)
+
+        def dist_from_feat(feat):
+            #BS x D
+            feat = tf.reshape(feat, (-1, 1, 1, 1, D))
+            sqdiff = tf.reduce_mean(tf.square(feature_tensor - feat), axis = -1)
+            return sqdiff
+
+        foo = lambda x: other.sampling.sample_with_mask_reshape(feature_tensor, x, sample_count = 1024, bs = BS)
+        bg_feats = foo(bg)
+        obj1_feats = foo(obj1)
+        obj2_feats = foo(obj2)
+
+        push_loss = 0.0
+        pull_loss = 0.0
+
+        push_loss -= avg_dist(bg_feats, obj1_feats)
+        push_loss -= avg_dist(bg_feats, obj2_feats)
+        push_loss -= avg_dist(obj1_feats, obj2_feats)
+
+        pull_loss += avg_dist(bg_feats, bg_feats)
+        pull_loss += avg_dist(obj1_feats, obj1_feats)
+        pull_loss += avg_dist(obj2_feats, obj2_feats)
+
+        push_loss = other.tfpy.print_val(push_loss, 'push_loss')
+        pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
+
+        total_loss = push_loss + pull_loss
+
+        #also while we're at it, put together some visualizations
+        avg_bg = tf.reduce_mean(bg_feats, axis = 1)
+        avg_obj1 = tf.reduce_mean(obj1_feats, axis = 1)
+        avg_obj2 = tf.reduce_mean(obj2_feats, axis = 1)
+
+        dist_bg = dist_from_feat(avg_bg)
+        dist_obj1 = dist_from_feat(avg_obj1)
+        dist_obj2 = dist_from_feat(avg_obj2)
+        dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
+        labels = tf.argmin(dists, axis = 3)
+
+        seg_bg = tf.equal(labels, 0)
+        seg_obj1 = tf.equal(labels, 1)
+        seg_obj2 = tf.equal(labels, 2)
+
+        #we can save these for later examination
+        setattr(self, 'pred_seg1_' + suffix, seg_obj1)
+        setattr(self, 'pred_seg2_' + suffix, seg_obj2)
+        
+        return total_loss        
     
     def _create_loss(self):
         ## create reconstruction loss
@@ -783,6 +931,10 @@ class ActiveMVnet(object):
 
         #so that we have always have something to optimize
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
+
+        if self.FLAGS.use_segs:
+            self.recon_loss += self.seg_train_loss
+        
         #print(self.update_ops)
         
         #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
@@ -796,25 +948,55 @@ class ActiveMVnet(object):
         #    self.recon_loss_last+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
         #    var_list=aggr_var+dqn_var+unet_var)
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
-        self.opt_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var)
-        self.opt_recon_last = slim.learning.create_train_op(self.recon_loss_last, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var)
-        self.opt_recon_first = slim.learning.create_train_op(self.recon_loss_first, optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var)
+        
+        self.opt_recon = slim.learning.create_train_op(
+            self.recon_loss,
+            optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var
+        )
+        
+        self.opt_recon_last = slim.learning.create_train_op(
+            self.recon_loss_last,
+            optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var
+        )
+        
+        self.opt_recon_first = slim.learning.create_train_op(
+            self.recon_loss_first,
+            optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var
+        )
+        
         #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce, optimizer=self.optimizer,
         #    variables_to_train=aggr_var+dqn_var)
         #self.opt_reinforce = z
-        self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
-            optimizer=self.optimizer_reinforce, clip_gradient_norm=10, variables_to_train=dqn_var)
+        
+        self.opt_reinforce = slim.learning.create_train_op(
+            self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
+            optimizer=self.optimizer_reinforce,
+            clip_gradient_norm=10,
+            variables_to_train=dqn_var
+        )
+        
         #self.opt_reinforce = slim.learning.create_train_op(self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu, 
         #    optimizer=self.optimizer_reinforce, variables_to_train=dqn_var)
-        self.opt_critic = slim.learning.create_train_op(self.critic_loss, optimizer=self.optimizer_critic,
-            variables_to_train=dqn_var)
-        self.opt_rein_recon = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
-            variables_to_train=aggr_var+unet_var)
-        self.opt_recon_unet = slim.learning.create_train_op(self.recon_loss, optimizer=self.optimizer,
-            variables_to_train=unet_var)
+        
+        self.opt_critic = slim.learning.create_train_op(
+            self.critic_loss,
+            optimizer=self.optimizer_critic,
+            variables_to_train=dqn_var
+        )
+        
+        self.opt_rein_recon = slim.learning.create_train_op(
+            self.recon_loss,
+            optimizer=self.optimizer,
+            variables_to_train=aggr_var+unet_var
+        )
+        
+        self.opt_recon_unet = slim.learning.create_train_op(
+            self.recon_loss, optimizer=self.optimizer,
+            variables_to_train=unet_var
+        )
 
     def _create_summary(self):
         #if self.FLAGS.is_training:
@@ -829,9 +1011,15 @@ class ActiveMVnet(object):
 
     def _create_collections(self):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
+
+        maybe_seg_train = ['seg1_batch', 'seg2_batch'] if self.FLAGS.use_segs else []
+        maybe_seg_test = ['seg1_test', 'seg2_test'] if self.FLAGS.use_segs else []
+        maybe_pred_seg_train = ['pred_seg1_train', 'pred_seg2_train'] if self.FLAGS.use_segs else []
+        maybe_pred_seg_test = ['pred_seg1_test', 'pred_seg2_test'] if self.FLAGS.use_segs else []
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
             ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test', 'vox_pred_test_rot']
+            + maybe_seg_test + maybe_pred_seg_test
         ))
 
         basic_list = [
@@ -850,6 +1038,10 @@ class ActiveMVnet(object):
             burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last', 'opt_critic']
         elif self.FLAGS.burin_opt == 2:
             burnin_list = basic_list[:] + ['opt_recon_first','critic_loss', 'recon_loss_first']
+
+        #debugging purposes
+        if self.FLAGS.use_segs:
+            burnin_list += maybe_seg_train + maybe_pred_seg_train
             
         train_list = basic_list[:] + [
             'loss_act_regu',
@@ -923,7 +1115,7 @@ class ActiveMVnet(object):
                 placeholders.penalty = self.penalty_list_test
             if include_segs:
                 placeholders.seg1 = self.seg1_test
-                placeholders.seg2 = self.seg2_test                
+                placeholders.seg2 = self.seg2_test
 
         return placeholders
 
@@ -995,7 +1187,9 @@ class ActiveMVnet(object):
     def predict_vox_list(self, mvnet_input, is_training = False):
 
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = True, include_action = False, include_penalty = False, train_mode = is_training
+            mvnet_input, include_vox = True, include_action = False, include_penalty = False,
+            include_segs = self.FLAGS.use_segs,
+            train_mode = is_training
         )
         return self.run_collection_with_fd(self.vox_prediction_collection, feed_dict)
 

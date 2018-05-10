@@ -73,6 +73,8 @@ def chamfer_preprocess(pts):
     pts = tf.gather(pts, keep_rnd)
     return pts
 
+def batch_dist_mat(bpts1, bpts2):
+    return tf.map_fn(lambda x: dist_mat(*x), [bpts1, bpts2], dtype = tf.float32, parallel_iterations = const.BS)
 
 def dist_mat(pts1, pts2):
     #(x-y)^2 = x^2 + y^2 - 2xy

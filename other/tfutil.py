@@ -227,3 +227,20 @@ def batchdim(tensor):
 def noop(x):
     z = tf.Variable(0.0, dtype = tf.float32)
     return x+z-z, z
+
+
+def pool3d(x, factor = 2, rank4 = False):
+    if rank4:
+        assert rank(x) == 4
+        x = tf.expand_dims(x, axis = 4)
+    return tf.nn.max_pool3d(
+        x,
+        ksize = [1, factor, factor, factor, 1],
+        strides = [1, factor, factor, factor, 1],
+        padding = 'VALID'
+    )
+
+def unitize(tensor, axis = -1):
+    norm = tf.sqrt(tf.reduce_sum(tf.square(tensor), axis = axis, keep_dims = True) + const.eps)
+    return tensor / norm
+

@@ -473,7 +473,8 @@ def voxel_encoder(inputs, aux, reuse):
 
 
 def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
-                    freeze_decoder = False, d0 = 16, return_logits = False, debug = False):
+                    freeze_decoder = False, d0 = 16, return_logits = False, return_feats = False,
+                    debug = False):
 
     decoder_trainable = not freeze_decoder
     input_size = list(inputs.get_shape())[1]
@@ -567,6 +568,9 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
             #now concatenate on the skip-connection
             net = tf.concat([net, skipcons.pop()], axis = 4)
 
+            if net.shape[1] == 32:
+                feats = net
+
             if debug:
                 summ.histogram('voxel_net_3d_dec_%d' % i, net)
                 
@@ -583,11 +587,14 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
     if debug:
         summ.histogram('voxel_net_3d_output', net_)
     
-
+    rvals = [net_]
     if return_logits:
-        return net_, net
-    else:
-        return net_
+        rvals.append(net)
+    if return_feats:
+        rvals.append(feats)
+    if len(rvals) == 1:
+        return rvals[0]
+    return tuple(rvals)
 
 #calling this 'unet_same' because it looks pretty similar to the original network i was using, except using
 #same instead of valid padding on the innermost layer
