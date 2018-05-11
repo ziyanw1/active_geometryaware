@@ -1,14 +1,26 @@
-def batch_knn(points, iters = 2, k = 3):
-    return tf.map_fn(
-        lambda x: knn(x, iters = iters, k = k),
-        points,
-        dtype = (tf.float32, [tf.float32] * k)
-    )
+import tensorflow as tf
 
-def knn(points, iters = 2, k = 3):
+def batch_knn(points, iters = 2, k = 3, mask = None):
+    if mask is None:
+        return tf.map_fn(
+            lambda (x, m): knn(x, iters = iters, k = k),
+            points,
+            dtype = [tf.float32]*k,
+        )
+    else:
+        return tf.map_fn(
+            lambda (x, m): knn(x, iters = iters, k = k, mask = m),
+            [points, mask],
+            dtype = [tf.float32]*k,
+        )
+
+def knn(points, iters = 2, k = 3, mask = None):
     #this is a pretty crude implementation
     #which creates new tensors for every additional iteration
     #should work ok for small #iters
+
+    if mask is not None:
+        points = tf.boolean_mask(points, mask)
 
     def dist_mat(pts1, pts2):
         #(x-y)^2 = x^2 + y^2 - 2xy
@@ -35,6 +47,6 @@ def knn(points, iters = 2, k = 3):
         clusters = tf.dynamic_partition(points, labels, k)
         centers = map(find_center, clusters)
 
-    dists = dist_mat(centers, points)
-    labels = tf.argmin(dists, axis = 0)
-    return labels, centers
+    #dists = dist_mat(centers, points)
+    #labels = tf.argmin(dists, axis = 0)
+    return centers

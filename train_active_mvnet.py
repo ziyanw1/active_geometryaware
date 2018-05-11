@@ -160,7 +160,8 @@ flags.DEFINE_boolean('GBL_thread', False, '')
 #whether to introduce pose noise to the unprojection
 flags.DEFINE_boolean('pose_noise', False, '')
 flags.DEFINE_boolean('use_segs', False, '')
-flags.DEFINE_string('seg_cluster_mode', 'gt', '')
+flags.DEFINE_string('seg_cluster_mode', 'kcenters', '')
+flags.DEFINE_string('seg_decision_rule', 'with_occ', '')
 # some constants i moved inside
 flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
@@ -313,10 +314,10 @@ def train(active_mv):
             for summ in summs_burnin:
                 active_mv.train_writer.add_summary(summ, i)
 
-            if (i+1) % 5000 == 0 and i > FLAGS.burnin_start_iter:
+            if (i+1) % FLAGS.save_every_step == 0 and i > FLAGS.burnin_start_iter:
                 save_pretrain(active_mv, i+1)
 
-            if (i+1) % 1000 == 0 and i > FLAGS.burnin_start_iter:
+            if (i+1) % FLAGS.test_every_step == 0 and i > FLAGS.burnin_start_iter:
                 evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj, mode=FLAGS.burnin_mode)
 
     for i_idx in xrange(FLAGS.max_iter):

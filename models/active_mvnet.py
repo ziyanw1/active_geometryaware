@@ -593,6 +593,7 @@ class ActiveMVnet(object):
             self.rotated_seg1_batch,
             self.rotated_seg2_batch,
             self.vox_list_feats,
+            self.vox_list_pred,
             'train'
         )
         self.seg_test_loss = self.__create_segmentation_loss(
@@ -600,10 +601,11 @@ class ActiveMVnet(object):
             self.rotated_seg1_test,
             self.rotated_seg2_test,
             self.vox_test_feats,
+            self.vox_pred_test_, #we don't want self.vox_pred_test!
             'test'
         )
 
-    def __create_segmentation_loss(self, vox, seg1, seg2, feats, suffix):
+    def __create_segmentation_loss(self, vox, seg1, seg2, feats, pred_vox, suffix):
         #feats contains feats 1, 2, 3, and 4 viewds
         #we would like to tile vox and collapse everything into one nice batch...
 
@@ -619,20 +621,23 @@ class ActiveMVnet(object):
             x = tf.expand_dims(x, 1)
             x = tf.tile(x, [1, self.FLAGS.max_episode_length, 1, 1, 1, 1])
             return collapse_time(x)
-            
+        
         vox = time_tile(vox)
         seg1 = time_tile(seg1)
         seg2 = time_tile(seg2)
-        feats = collapse_time(feats)
 
+        feats = collapse_time(feats)
+        pred_vox = collapse_time(pred_vox)
+        
         bg = 1.0 - vox
         bg = other.tfutil.pool3d(bg)
         seg1 = other.tfutil.pool3d(seg1)
         seg2 = other.tfutil.pool3d(seg2)
+        pred_vox = other.tfutil.pool3d(pred_vox)
 
-        return self.create_segmentation_loss(bg, seg1, seg2, feats, suffix)
+        return self.create_segmentation_loss(bg, seg1, seg2, feats, pred_vox, suffix)
 
-    def create_segmentation_loss(self, bg, obj1, obj2, feats, suffix):
+    def create_segmentation_loss(self, bg, obj1, obj2, feats, pred_vox, suffix):
 
         BS = int(bg.shape[0])
         
@@ -693,23 +698,34 @@ class ActiveMVnet(object):
         
         if self.FLAGS.seg_cluster_mode == 'gt':
             center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
+
         elif self.FLAGS.seg_cluster_mode == 'kcenters':
-            knn_out = other.knn.batch_knn(flat_features, iters = 2, k = 3)
-            labels = knn_out.labels #BS x ?
-            centers = knn_out.centers #[BS x D] * 3
-            center_bg, center_obj1, center_obj2 = match([avg_bg, avg_obj1, avg_obj2], centers)
+            assert (self.FLAGS.seg_decision_rule == 'with_occ')
+            flat_mask = tf.reshape(pred_vox, (BS, -1)) 
+            center_obj1, center_obj2 = other.knn.batch_knn(flat_features, iters = 2, k = 2, mask = flat_mask)
+            center_bg = tf.zeros_like(center_obj1) #this is not used...
+            
         else:
             raise Exception('bad cluster mode')
-            
+
         dist_bg = dist_from_feat(center_bg)
         dist_obj1 = dist_from_feat(center_obj1)
         dist_obj2 = dist_from_feat(center_obj2)
-        dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
-        labels = tf.argmin(dists, axis = 3)
+        
+        if self.FLAGS.seg_decision_rule == 'independent':
+            dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
+            labels = tf.argmin(dists, axis = 3)
 
-        seg_bg = tf.equal(labels, 0)
-        seg_obj1 = tf.equal(labels, 1)
-        seg_obj2 = tf.equal(labels, 2)
+            seg_bg = tf.cast(tf.equal(labels, 0), tf.float32)
+            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32)
+            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32)
+            
+        elif self.FLAGS.seg_decision_rule == 'with_occ':
+            dists = tf.stack([dist_obj1, dist_obj2], axis = 3)
+            labels = tf.argmin(dists, axis = 3) + 1
+
+            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * tf.squeeze(pred_vox, axis = -1)
+            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * tf.squeeze(pred_vox, axis = -1)
             
 
         #we can save these for later examination
