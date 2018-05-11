@@ -254,7 +254,7 @@ class ActiveMVnet(object):
             with tf.variable_scope(scope_name, reuse = reuse):
                 return other.nets.voxel_net_3d_v2(
                     vox_feat, bn = if_bn, bn_trainmode=self.is_training,
-                    freeze_decoder=not trainable,
+                    freeze_decoder=self.FLAGS.reproj_mode,
                     return_logits = True, return_feats = self.FLAGS.use_segs,
                     debug = debug
                 )

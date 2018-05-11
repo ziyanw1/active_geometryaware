@@ -160,6 +160,7 @@ flags.DEFINE_boolean('GBL_thread', False, '')
 #whether to introduce pose noise to the unprojection
 flags.DEFINE_boolean('pose_noise', False, '')
 flags.DEFINE_boolean('use_segs', False, '')
+flags.DEFINE_boolean('reproj_mode', False, '')
 flags.DEFINE_string('seg_cluster_mode', 'kcenters', '')
 flags.DEFINE_string('seg_decision_rule', 'with_occ', '')
 # some constants i moved inside
@@ -169,6 +170,11 @@ flags.DEFINE_float('BN_DECAY_DECAY_STEP', -1, '')
 flags.DEFINE_float('BN_DECAY_CLIP', 0.99, '')
 
 FLAGS = flags.FLAGS
+
+if FLAGS.reproj_mode:
+    assert not FLAGS.use_segs
+    assert FLAGS.burin_opt == 3
+
 
 #POINTCLOUDSIZE = FLAGS.num_point
 #if FLAGS.if_deconv:
@@ -234,7 +240,7 @@ def burnin_log(i, out_stuff, t):
     critic_loss = out_stuff.critic_loss
     seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
     reproj_loss = out_stuff.reproj_train_loss if FLAGS.burin_opt == 3 else 0.0
-    log_string('Burn in iter: {}, recon_loss: {}, critic_loss: {}, seg_loss: {}, reproj_loss: {}, unproject time: {}s'.format(
+    log_string('Burn in iter: {}, recon_loss: {:.4f}, critic_loss: {:.4f}, seg_loss: {:.4f}, reproj_loss: {:.4f}, unproject time: {:.2f}s'.format(
         i, recon_loss, critic_loss, seg_loss, reproj_loss, t))
     
     summary_recon = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
@@ -299,12 +305,15 @@ def train(active_mv):
     ### burn in(pretrain) for MVnet
     if FLAGS.burn_in_iter > 0:
         for i in xrange(FLAGS.burnin_start_iter, FLAGS.burnin_start_iter+FLAGS.burn_in_iter):
-            rollout_obj.go(i, verbose = True, add_to_mem = True, mode = FLAGS.burnin_mode, is_train=True)
-            if not FLAGS.random_pretrain:
-                replay_mem.enable_gbl()
-                mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
-            else:
-                mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
+
+            if (not FLAGS.reproj_mode) or (i == FLAGS.burnin_start_iter):
+                rollout_obj.go(i, verbose = True, add_to_mem = True, mode = FLAGS.burnin_mode, is_train=True)
+                if not FLAGS.random_pretrain:
+                    replay_mem.enable_gbl()
+                    mvnet_input = replay_mem.get_batch_list(FLAGS.batch_size)
+                else:
+                    mvnet_input = replay_mem.get_batch_list_random(senv, FLAGS.batch_size)
+            
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
 
@@ -319,7 +328,9 @@ def train(active_mv):
                 save_pretrain(active_mv, i+1)
 
             if (i+1) % FLAGS.test_every_step == 0 and i > FLAGS.burnin_start_iter:
-                evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj, mode=FLAGS.burnin_mode)
+                evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj,
+                                mode=FLAGS.burnin_mode,
+                                override_mvnet_input = mvnet_input if self.reproj_mode else None)
 
     for i_idx in xrange(FLAGS.max_iter):
 
@@ -468,7 +479,9 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
     tf_util.save_scalar(train_i, 'eval_mean_IoU_{}'.format(mode), eval_IoU_mean, active_mv.train_writer)
     tf_util.save_scalar(train_i, 'eval_mean_loss_{}'.format(mode), eval_loss_mean, active_mv.train_writer)
 
-def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode='random'):
+def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_obj,
+                    mode='random', override_mvnet_input = None):
+    
     senv = ShapeNetEnv(FLAGS)
 
     #epsilon = FLAGS.init_eps
@@ -501,6 +514,10 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             mvnet_input.put_segs(seg1, seg2)
 
         mvnet_input.put_voxel(vox_gt)
+
+        if override_mvnet_input is not None:
+            mvnet_input = override_mvnet_input
+        
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
         vox_gtr = np.squeeze(pred_out.rotated_vox_test)
