@@ -32,7 +32,9 @@ class ActiveMVnet(object):
         self._create_placeholders()
         self._create_ground_truth_voxels()
         self._create_network()
-        self._create_segmentation_loss()
+        self._create_reprojection_loss()
+        if self.FLAGS.use_segs:
+            self._create_segmentation_loss()
         self._create_loss()
         #if FLAGS.is_training:
         self._create_optimizer()
@@ -253,7 +255,7 @@ class ActiveMVnet(object):
                 return other.nets.voxel_net_3d_v2(
                     vox_feat, bn = if_bn, bn_trainmode=self.is_training,
                     freeze_decoder=not trainable,
-                    return_logits = True, return_feats = True,
+                    return_logits = True, return_feats = self.FLAGS.use_segs,
                     debug = debug
                 )
             
@@ -586,6 +588,85 @@ class ActiveMVnet(object):
         self.vox_pred_test_rot = tf.map_fn(rotate_func, tf.stack(tf.unstack(tf.expand_dims(self.vox_pred_test, axis=0),
             axis=1)))
 
+    def collapse_time(self, x):
+        shp = list(x.shape)
+        a = shp.pop(0)
+        b = shp.pop(0)
+        shp = [a*b] + shp
+        x = tf.reshape(x, shp)
+        return x    
+
+    def _create_reprojection_loss(self, mode = 'train'):
+        #calls create_reprojection_loss
+        assert mode == 'train'
+
+        S = self.FLAGS.voxel_resolution
+        
+        #depth and mask should be BS x 128 x 128 x 1
+        #vox should be BS x 128 x 128 x 128
+        depth = 1.0/(self.invZ_list_batch+other.const.eps)
+        depth *= 2.0
+        depth += other.const.DIST_TO_CAM
+        depth = self.collapse_time(depth)
+        mask = self.collapse_time(self.mask_list_batch)
+
+        vox = self.collapse_time(self.vox_list_pred)
+        proj_and_post = lambda x: other.voxel.transformer_postprocess(other.voxel.project_voxel(x))
+        vox = proj_and_post(vox)
+        vox = tf.squeeze(vox, axis = -1)
+
+        depth = tf.image.resize_images(depth, (S, S))
+        mask = tf.image.resize_images(mask, (S, S))
+        
+        self.reproj_train_loss = self.create_reprojection_loss(depth, mask, vox)
+
+    def create_reprojection_loss(self, depth, mask, vox):
+        print '===='
+        print depth
+        print mask
+        print vox
+        
+        #vox should be post-projection
+
+        BS = depth.shape[0]
+        S = self.FLAGS.voxel_resolution
+        
+        #1. make a meshgrid of BS x 128 x 128 x 128
+        #the LAST axis is depth, from 0 to 127
+        meshgrid = tf.range(S, dtype = tf.float32)
+        meshgrid = tf.reshape(meshgrid, (1, 1, 1, S))
+        meshgrid = tf.tile(meshgrid, (BS, S, S, 1))
+
+        #check this...
+        meshgrid += 0.5 #to get box centers
+        meshgrid /= S
+        meshgrid *= 2 #(0,2)
+        meshgrid += 3 #(3,5)
+
+        #if not part of the mask, make the depth really high
+        depth = depth + 1000.0 * (1.0-mask)
+        #depth is BS x 128 x 128 x 1
+
+        # we want the delta to be 0.5 grid cells, there are const.S grid cells which span a 2^3 cube
+        delta = 0.5 * (2.0 / S)
+
+        closer_voxels = tf.cast(meshgrid < depth-delta, tf.float32) 
+        farther_voxels = tf.cast(meshgrid > depth+delta, tf.float32)
+        match_voxels = 1.0 - closer_voxels - farther_voxels
+
+        normalize = False
+        def reduce_for_mask(value, mask):
+            if normalize:
+                return tf.reduce_sum(mask * value) / (tf.reduce_sum(mask) + other.const.eps)
+            else:
+                return tf.reduce_mean(mask * value)
+
+        alpha = 50.0 #multipler on the match loss
+        loss =  -(reduce_for_mask(tf.log(1.0 - vox + other.const.eps), closer_voxels)
+                  + alpha * reduce_for_mask(tf.log(vox + other.const.eps), match_voxels))
+        return loss
+
+            
     def _create_segmentation_loss(self):
         
         self.seg_train_loss = self.__create_segmentation_loss(
@@ -608,26 +689,18 @@ class ActiveMVnet(object):
     def __create_segmentation_loss(self, vox, seg1, seg2, feats, pred_vox, suffix):
         #feats contains feats 1, 2, 3, and 4 viewds
         #we would like to tile vox and collapse everything into one nice batch...
-
-        def collapse_time(x):
-            shp = list(x.shape)
-            a = shp.pop(0)
-            b = shp.pop(0)
-            shp = [a*b] + shp
-            x = tf.reshape(x, shp)
-            return x
         
         def time_tile(x):
             x = tf.expand_dims(x, 1)
             x = tf.tile(x, [1, self.FLAGS.max_episode_length, 1, 1, 1, 1])
-            return collapse_time(x)
+            return self.collapse_time(x)
         
         vox = time_tile(vox)
         seg1 = time_tile(seg1)
         seg2 = time_tile(seg2)
 
-        feats = collapse_time(feats)
-        pred_vox = collapse_time(pred_vox)
+        feats = self.collapse_time(feats)
+        pred_vox = self.collapse_time(pred_vox)
         
         bg = 1.0 - vox
         bg = other.tfutil.pool3d(bg)
@@ -987,6 +1060,12 @@ class ActiveMVnet(object):
         #    self.recon_loss_last+self.loss_reinforce+self.FLAGS.reg_act*self.loss_act_regu,
         #    var_list=aggr_var+dqn_var+unet_var)
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
+
+        self.opt_reproj = slim.learning.create_train_op(
+            self.reproj_train_loss,
+            optimizer=self.optimizer_burnin, 
+            variables_to_train=aggr_var+unet_var
+        )
         
         self.opt_recon = slim.learning.create_train_op(
             self.recon_loss + maybe_seg_loss,
@@ -1088,6 +1167,10 @@ class ActiveMVnet(object):
             burnin_list = (basic_list[:] +
                            ['opt_recon_first','critic_loss', 'recon_loss_first'] +
                            maybe_seg_train_loss)
+
+        elif self.FLAGS.burin_opt == 3:
+            burnin_list = (basic_list[:] +
+                           ['opt_reproj', 'critic_loss', 'reproj_train_loss', 'opt_critic'])
 
         #debugging purposes
         if self.FLAGS.use_segs:
