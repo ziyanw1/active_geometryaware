@@ -1468,3 +1468,11 @@ class MVInputs(object):
         for key in keys:
             arr = getattr(self, key)
             arr[batch_idx, episode_idx, ...] = getattr(single_mvinput, key)
+
+def batch_to_single_mvinput(mvinput):
+    new_mvinput = MVInputs(mvinput.FLAGS, batch_size = 1)
+    for key in mvinput.provider.dtypes:
+        if hasattr(mvinput, key):
+            setattr(new_mvinput, key, getattr(mvinput, key)[:1])
+    return new_mvinput
+            

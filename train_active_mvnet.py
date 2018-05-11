@@ -33,7 +33,7 @@ sys.path.append(os.path.join(BASE_DIR, 'env_data'))
 import tf_util
 
 #from visualizers import VisVox
-from active_mvnet import ActiveMVnet, SingleInput, MVInputs
+from active_mvnet import ActiveMVnet, SingleInput, MVInputs, batch_to_single_mvinput
 from shapenet_env import ShapeNetEnv
 from replay_memory import ReplayMemory, trajectData
 import psutil
@@ -163,6 +163,8 @@ flags.DEFINE_boolean('use_segs', False, '')
 flags.DEFINE_boolean('reproj_mode', False, '')
 flags.DEFINE_string('seg_cluster_mode', 'kcenters', '')
 flags.DEFINE_string('seg_decision_rule', 'with_occ', '')
+flags.DEFINE_boolean('eval0', False, '')
+
 # some constants i moved inside
 flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
@@ -327,10 +329,11 @@ def train(active_mv):
             if (i+1) % FLAGS.save_every_step == 0 and i > FLAGS.burnin_start_iter:
                 save_pretrain(active_mv, i+1)
 
-            if (i+1) % FLAGS.test_every_step == 0 and i > FLAGS.burnin_start_iter:
+            if (i+1) % FLAGS.test_every_step == 0 and (i > FLAGS.burnin_start_iter or FLAGS.eval0):
                 evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj,
                                 mode=FLAGS.burnin_mode,
-                                override_mvnet_input = mvnet_input if self.reproj_mode else None)
+                                override_mvnet_input = (batch_to_single_mvinput(mvnet_input)
+                                                        if FLAGS.reproj_mode else None))
 
     for i_idx in xrange(FLAGS.max_iter):
 
@@ -551,9 +554,12 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
                 'model_id': model_id,
                 'states': rollout_obj.last_trajectory,
                 'RGB_list': mvnet_input.rgb,
-                'pred_seg1_test': pred_out.pred_seg1_test,
-                'pred_seg2_test': pred_out.pred_seg2_test,
             }
+
+            if FLAGS.use_segs:
+                save_dict['pred_seg1_test'] = pred_out.pred_seg1_test
+                save_dict['pred_seg2_test'] = pred_out.pred_seg2_test
+
 
             dump_outputs(save_dict, train_i, i_idx, mode)
             
@@ -762,10 +768,11 @@ def dump_outputs(save_dict, train_i, i_idx, mode=''):
         img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
         other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
 
-        seg1_save_name = os.path.join(eval_dir, '{}_{}_seg1.binvox'.format(i_idx, i))
-        save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
-        seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
-        save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
+        if FLAGS.use_segs:
+            seg1_save_name = os.path.join(eval_dir, '{}_{}_seg1.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
+            seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
 
 def save_voxel(vox, pth):
     THRESHOLD = 0.5
