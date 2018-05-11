@@ -233,8 +233,9 @@ def burnin_log(i, out_stuff, t):
     recon_loss = out_stuff.recon_loss
     critic_loss = out_stuff.critic_loss
     seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
-    log_string('Burn in iter: {}, recon_loss: {}, critic_loss: {}, seg_loss: {}, unproject time: {}s'.format(i, recon_loss,
-                                                                                                             critic_loss, seg_loss, t))
+    reproj_loss = out_stuff.reproj_train_loss if FLAGS.burin_opt == 3 else 0.0
+    log_string('Burn in iter: {}, recon_loss: {}, critic_loss: {}, seg_loss: {}, reproj_loss: {}, unproject time: {}s'.format(
+        i, recon_loss, critic_loss, seg_loss, reproj_loss, t))
     
     summary_recon = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
     summary_critic = tf.Summary(value=[tf.Summary.Value(tag='burin/critic_loss', simple_value=critic_loss)])
