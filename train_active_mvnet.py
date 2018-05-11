@@ -309,8 +309,6 @@ def train(active_mv):
         for i in xrange(FLAGS.burnin_start_iter, FLAGS.burnin_start_iter+FLAGS.burn_in_iter):
 
             if (not FLAGS.reproj_mode) or (i == FLAGS.burnin_start_iter):
-                import ipdb
-                ipdb.set_trace()
                 rollout_obj.go(i, verbose = True, add_to_mem = True, mode = FLAGS.burnin_mode, is_train=True)
                 if not FLAGS.random_pretrain:
                     replay_mem.enable_gbl()
