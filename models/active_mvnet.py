@@ -47,6 +47,7 @@ class ActiveMVnet(object):
             aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
             unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
             dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
+            
             self.pretrain_saver = tf.train.Saver(unet_var+aggr_var, max_to_keep=None)
         else:
             self.pretrain_saver = tf.train.Saver(max_to_keep=None)
@@ -604,9 +605,9 @@ class ActiveMVnet(object):
         
         #depth and mask should be BS x 128 x 128 x 1
         #vox should be BS x 128 x 128 x 128
-        depth = 1.0/(self.invZ_list_batch+other.const.eps)
-        depth *= 2.0
-        depth += other.const.DIST_TO_CAM
+
+        invz = self.invZ_list_batch
+        depth = 2.0/(invz+other.const.eps)
         depth = self.collapse_time(depth)
         mask = self.collapse_time(self.mask_list_batch)
 
@@ -621,12 +622,10 @@ class ActiveMVnet(object):
         self.reproj_train_loss = self.create_reprojection_loss(depth, mask, vox)
 
     def create_reprojection_loss(self, depth, mask, vox):
-        print '===='
-        print depth
-        print mask
-        print vox
-        
         #vox should be post-projection
+        
+        #mask = other.tfpy.summarize_tensor(mask, 'mask')
+        #depth = other.tfpy.summarize_tensor(depth, 'depth')
 
         BS = depth.shape[0]
         S = self.FLAGS.voxel_resolution
@@ -652,7 +651,12 @@ class ActiveMVnet(object):
 
         closer_voxels = tf.cast(meshgrid < depth-delta, tf.float32) 
         farther_voxels = tf.cast(meshgrid > depth+delta, tf.float32)
-        match_voxels = 1.0 - closer_voxels - farther_voxels
+
+        #closer_voxels = other.tfpy.summarize_tensor(closer_voxels, 'closer_voxels')
+        #farther_voxels = other.tfpy.summarize_tensor(farther_voxels, 'farther_voxels')
+        
+        match_voxels = 1.0 - closer_voxels - farther_voxels        
+        #match_voxels = other.tfpy.summarize_tensor(match_voxels, 'match_voxels')        
 
         normalize = False
         def reduce_for_mask(value, mask):
@@ -1021,7 +1025,7 @@ class ActiveMVnet(object):
         aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
         unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
         dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
-
+        
         if self.FLAGS.if_constantLr:
             self.learning_rate = self.FLAGS.learning_rate
             #self._log_string(tf_util.toGreen('===== Using constant lr!'))
@@ -1064,7 +1068,7 @@ class ActiveMVnet(object):
         self.opt_reproj = slim.learning.create_train_op(
             self.reproj_train_loss,
             optimizer=self.optimizer_burnin, 
-            variables_to_train=aggr_var+unet_var
+            variables_to_train=unet_var #encoder weights only
         )
         
         self.opt_recon = slim.learning.create_train_op(
