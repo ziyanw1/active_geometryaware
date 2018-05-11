@@ -2,10 +2,10 @@
 
 cd ..
 
-python train_active_mvnet.py --is_training=True --LOG_DIR=log_agent_all --task_name='asdf1'     \
+python train_active_mvnet.py --is_training=True --LOG_DIR=log_agent_all --task_name='asdf2'     \
  --max_episode_length=4 --reward_type='IoU' --learning_rate=5e-4 --burn_in_length=10 --burn_in_iter=20000 \
  --test_every_step=200 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
   --resolution=128 --category='3333' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
  --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=20 --GBL_thread=True --reward_weight=10 \
 --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=1 \
---pretrain_restore=True --pretrain_restore_path='/home/ricsonc/MVnet_active/log_agent_all/gru_nostop_iou_longermem_ftDQN_coef1_lastrecon_double_mug/log_agent/pretrain_model.ckpt-5000' --use_segs=True
+--pretrain_restore=True --pretrain_restore_path='/home/ricsonc/MVnet_active/log_agent_all/asdf1/log_agent/pretrain_model.ckpt-5000' --use_segs=True

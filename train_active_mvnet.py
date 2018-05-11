@@ -160,6 +160,7 @@ flags.DEFINE_boolean('GBL_thread', False, '')
 #whether to introduce pose noise to the unprojection
 flags.DEFINE_boolean('pose_noise', False, '')
 flags.DEFINE_boolean('use_segs', False, '')
+flags.DEFINE_string('seg_cluster_mode', 'gt', '')
 # some constants i moved inside
 flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
 flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
@@ -230,8 +231,10 @@ def restore_from_iter(ae, iter):
 def burnin_log(i, out_stuff, t):
     recon_loss = out_stuff.recon_loss
     critic_loss = out_stuff.critic_loss
-    log_string('Burn in iter: {}, recon_loss: {}, critic_loss: {}, unproject time: {}s'.format(i, recon_loss,
-        critic_loss, t))
+    seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
+    log_string('Burn in iter: {}, recon_loss: {}, critic_loss: {}, seg_loss: {}, unproject time: {}s'.format(i, recon_loss,
+                                                                                                             critic_loss, seg_loss, t))
+    
     summary_recon = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
     summary_critic = tf.Summary(value=[tf.Summary.Value(tag='burin/critic_loss', simple_value=critic_loss)])
     return [summary_recon, summary_critic]

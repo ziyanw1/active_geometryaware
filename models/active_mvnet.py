@@ -652,6 +652,19 @@ class ActiveMVnet(object):
             sqdiff = tf.reduce_mean(tf.square(feature_tensor - feat), axis = -1)
             return sqdiff
 
+        def match(dest_tensors, src_tensors):
+            '''
+            return some permutation p of src_tensors such that 
+              1. we say p[i] is matched to dest[i]
+              2. the cost of the matching (euclidean distance) is minimized
+
+            this op is not backpropable
+            '''
+            def python_match(dest_arrs, src_arrs):
+                raise NotImplementedError
+            
+            return tf.py_func(python_match, [dest_tensors, src_tensors], [tf.float32]*len(dest_tensors))
+
         foo = lambda x: other.sampling.sample_with_mask_reshape(feature_tensor, x, sample_count = 1024, bs = BS)
         bg_feats = foo(bg)
         obj1_feats = foo(obj1)
@@ -673,20 +686,31 @@ class ActiveMVnet(object):
 
         total_loss = push_loss + pull_loss
 
-        #also while we're at it, put together some visualizations
+        #### also while we're at it, put together some visualizations
         avg_bg = tf.reduce_mean(bg_feats, axis = 1)
         avg_obj1 = tf.reduce_mean(obj1_feats, axis = 1)
         avg_obj2 = tf.reduce_mean(obj2_feats, axis = 1)
-
-        dist_bg = dist_from_feat(avg_bg)
-        dist_obj1 = dist_from_feat(avg_obj1)
-        dist_obj2 = dist_from_feat(avg_obj2)
+        
+        if self.FLAGS.seg_cluster_mode == 'gt':
+            center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
+        elif self.FLAGS.seg_cluster_mode == 'kcenters':
+            knn_out = other.knn.batch_knn(flat_features, iters = 2, k = 3)
+            labels = knn_out.labels #BS x ?
+            centers = knn_out.centers #[BS x D] * 3
+            center_bg, center_obj1, center_obj2 = match([avg_bg, avg_obj1, avg_obj2], centers)
+        else:
+            raise Exception('bad cluster mode')
+            
+        dist_bg = dist_from_feat(center_bg)
+        dist_obj1 = dist_from_feat(center_obj1)
+        dist_obj2 = dist_from_feat(center_obj2)
         dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
         labels = tf.argmin(dists, axis = 3)
 
         seg_bg = tf.equal(labels, 0)
         seg_obj1 = tf.equal(labels, 1)
         seg_obj2 = tf.equal(labels, 2)
+            
 
         #we can save these for later examination
         setattr(self, 'pred_seg1_' + suffix, seg_obj1)
@@ -932,9 +956,8 @@ class ActiveMVnet(object):
         #so that we have always have something to optimize
         self.recon_loss, z = other.tfutil.noop(self.recon_loss)
 
-        if self.FLAGS.use_segs:
-            self.recon_loss += self.seg_train_loss
-        
+        maybe_seg_loss = self.seg_train_loss if self.FLAGS.use_segs else 0.0
+            
         #print(self.update_ops)
         
         #self.opt_recon = self.optimizer.minimize(self.recon_loss, var_list=aggr_var+unet_var+[z])  
@@ -950,19 +973,19 @@ class ActiveMVnet(object):
         #self.opt_reinforce = self.optimizer.minimize(self.loss_reinforce, var_list=aggr_var+dqn_var)
         
         self.opt_recon = slim.learning.create_train_op(
-            self.recon_loss,
+            self.recon_loss + maybe_seg_loss,
             optimizer=self.optimizer_burnin, 
             variables_to_train=aggr_var+unet_var
         )
         
         self.opt_recon_last = slim.learning.create_train_op(
-            self.recon_loss_last,
+            self.recon_loss_last+ maybe_seg_loss,
             optimizer=self.optimizer_burnin, 
             variables_to_train=aggr_var+unet_var
         )
         
         self.opt_recon_first = slim.learning.create_train_op(
-            self.recon_loss_first,
+            self.recon_loss_first + maybe_seg_loss,
             optimizer=self.optimizer_burnin, 
             variables_to_train=aggr_var+unet_var
         )
@@ -988,13 +1011,14 @@ class ActiveMVnet(object):
         )
         
         self.opt_rein_recon = slim.learning.create_train_op(
-            self.recon_loss,
+            self.recon_loss + maybe_seg_loss,
             optimizer=self.optimizer,
             variables_to_train=aggr_var+unet_var
         )
         
         self.opt_recon_unet = slim.learning.create_train_op(
-            self.recon_loss, optimizer=self.optimizer,
+            self.recon_loss + maybe_seg_loss,
+            optimizer=self.optimizer,
             variables_to_train=unet_var
         )
 
@@ -1016,6 +1040,8 @@ class ActiveMVnet(object):
         maybe_seg_test = ['seg1_test', 'seg2_test'] if self.FLAGS.use_segs else []
         maybe_pred_seg_train = ['pred_seg1_train', 'pred_seg2_train'] if self.FLAGS.use_segs else []
         maybe_pred_seg_test = ['pred_seg1_test', 'pred_seg2_test'] if self.FLAGS.use_segs else []
+        maybe_seg_train_loss = ['seg_train_loss'] if self.FLAGS.use_segs else []
+        maybe_seg_test_loss = ['seg_test_loss'] if self.FLAGS.use_segs else []        
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
             ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test', 'vox_pred_test_rot']
@@ -1031,13 +1057,21 @@ class ActiveMVnet(object):
             'reward_raw_batch',
             'loss_reinforce',
         ]
-        
+
         if self.FLAGS.burin_opt == 0:
-            burnin_list = basic_list[:] + ['opt_recon', 'critic_loss', 'opt_critic']
+            burnin_list = (basic_list[:] +
+                           ['opt_recon', 'critic_loss', 'opt_critic'] +
+                           maybe_seg_train_loss)
+            
         elif self.FLAGS.burin_opt == 1:
-            burnin_list = basic_list[:] + ['opt_recon_last','critic_loss', 'recon_loss_last', 'opt_critic']
+            burnin_list = (basic_list[:] +
+                           ['opt_recon_last', 'critic_loss', 'recon_loss_last', 'opt_critic'] +
+                           maybe_seg_train_loss)
+            
         elif self.FLAGS.burin_opt == 2:
-            burnin_list = basic_list[:] + ['opt_recon_first','critic_loss', 'recon_loss_first']
+            burnin_list = (basic_list[:] +
+                           ['opt_recon_first','critic_loss', 'recon_loss_first'] +
+                           maybe_seg_train_loss)
 
         #debugging purposes
         if self.FLAGS.use_segs:
