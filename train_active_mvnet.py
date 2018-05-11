@@ -309,6 +309,8 @@ def train(active_mv):
         for i in xrange(FLAGS.burnin_start_iter, FLAGS.burnin_start_iter+FLAGS.burn_in_iter):
 
             if (not FLAGS.reproj_mode) or (i == FLAGS.burnin_start_iter):
+                import ipdb
+                ipdb.set_trace()
                 rollout_obj.go(i, verbose = True, add_to_mem = True, mode = FLAGS.burnin_mode, is_train=True)
                 if not FLAGS.random_pretrain:
                     replay_mem.enable_gbl()
@@ -329,7 +331,9 @@ def train(active_mv):
             if (i+1) % FLAGS.save_every_step == 0 and i > FLAGS.burnin_start_iter:
                 save_pretrain(active_mv, i+1)
 
-            if (i+1) % FLAGS.test_every_step == 0 and (i > FLAGS.burnin_start_iter or FLAGS.eval0):
+            if (((i+1) % FLAGS.test_every_step == 0 and i > FLAGS.burnin_start_iter) or
+                (FLAGS.eval0 and i == FLAGS.burnin_start_iter)):
+                
                 evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj,
                                 mode=FLAGS.burnin_mode,
                                 override_mvnet_input = (batch_to_single_mvinput(mvnet_input)

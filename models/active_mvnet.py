@@ -1068,7 +1068,8 @@ class ActiveMVnet(object):
         self.opt_reproj = slim.learning.create_train_op(
             self.reproj_train_loss,
             optimizer=self.optimizer_burnin, 
-            variables_to_train=unet_var #encoder weights only
+            variables_to_train=unet_var, #encoder weights only
+            clip_gradient_norm=1 
         )
         
         self.opt_recon = slim.learning.create_train_op(
@@ -1477,6 +1478,6 @@ def batch_to_single_mvinput(mvinput):
     new_mvinput = MVInputs(mvinput.FLAGS, batch_size = 1)
     for key in mvinput.provider.dtypes:
         if hasattr(mvinput, key):
-            setattr(new_mvinput, key, getattr(mvinput, key)[:1])
+            setattr(new_mvinput, key, getattr(mvinput, key)[:1].copy())
     return new_mvinput
             
