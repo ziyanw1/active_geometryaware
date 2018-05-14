@@ -2,17 +2,12 @@ import tensorflow as tf
 
 def batch_knn(points, iters = 2, k = 3, mask = None):
     if mask is None:
-        return tf.map_fn(
-            lambda (x, m): knn(x, iters = iters, k = k),
-            points,
-            dtype = [tf.float32]*k,
-        )
+        fn = lambda (x, m): knn(x, iters = iters, k = k)
+        args = points
     else:
-        return tf.map_fn(
-            lambda (x, m): knn(x, iters = iters, k = k, mask = m),
-            [points, mask],
-            dtype = [tf.float32]*k,
-        )
+        fn = lambda (x, m): knn(x, iters = iters, k = k, mask = m)
+        args = [points, mask]
+    return tf.map_fn(fn, args, dtype = [tf.float32]*k)
 
 def knn(points, iters = 2, k = 3, mask = None):
     #this is a pretty crude implementation
@@ -29,8 +24,12 @@ def knn(points, iters = 2, k = 3, mask = None):
         ysq = tf.expand_dims(tf.reduce_sum(tf.square(pts2), axis=1), axis=0)  # 1 by m
         return xsq + ysq - 2 * xy
 
-    def find_center(pts):
-        return (tf.reduce_max(pts, axis = 0) + tf.reduce_min(pts, axis = 0)) / 2.0
+    if True:
+        def find_center(pts): #K centers
+            return (tf.reduce_max(pts, axis = 0) + tf.reduce_min(pts, axis = 0)) / 2.0
+    else:
+        def find_center(pts): #K means
+            return tf.reduce_mean(pts, axis = 0)
     
     #initialization
     idx = tf.random_uniform(shape = (), maxval = k-1, dtype = tf.int32)
@@ -46,7 +45,5 @@ def knn(points, iters = 2, k = 3, mask = None):
         labels = tf.cast(tf.argmin(dists, axis = 0), tf.int32)
         clusters = tf.dynamic_partition(points, labels, k)
         centers = map(find_center, clusters)
-
-    #dists = dist_mat(centers, points)
-    #labels = tf.argmin(dists, axis = 0)
+    
     return centers
