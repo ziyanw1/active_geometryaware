@@ -161,7 +161,7 @@ flags.DEFINE_boolean('GBL_thread', False, '')
 flags.DEFINE_boolean('pose_noise', False, '')
 flags.DEFINE_boolean('use_segs', False, '')
 flags.DEFINE_boolean('reproj_mode', False, '')
-flags.DEFINE_string('seg_cluster_mode', 'kcenters', '')
+flags.DEFINE_string('seg_cluster_mode', 'gt', '')
 flags.DEFINE_string('seg_decision_rule', 'with_occ', '')
 flags.DEFINE_boolean('eval0', False, '')
 
@@ -242,6 +242,7 @@ def burnin_log(i, out_stuff, t):
     critic_loss = out_stuff.critic_loss
     seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
     reproj_loss = out_stuff.reproj_train_loss if FLAGS.burin_opt == 3 else 0.0
+    
     log_string('Burn in iter: {}, recon_loss: {:.4f}, critic_loss: {:.4f}, seg_loss: {:.4f}, reproj_loss: {:.4f}, unproject time: {:.2f}s'.format(
         i, recon_loss, critic_loss, seg_loss, reproj_loss, t))
     
@@ -277,11 +278,15 @@ def train_log(i, out_stuff, t):
     #log_string('IoU_list_batch:{}'.format(IoU_list_batch))
     ###
 
-def eval_log(i, out_stuff, iou):
+def eval_log(i, out_stuff, iou, maybe_seg1_ious, maybe_seg2_ious):
     reward = np.sum(out_stuff.reward_raw_test)
     losses = out_stuff.recon_loss_list_test
     log_string('------Episode: {}, episode_reward: {:.4f}, IoU: {:.4f}, Losses: {}------'.format(
         i, reward, iou, losses))
+    if FLAGS.use_segs:
+        print 'seg ious:'
+        print maybe_seg1_ious
+        print maybe_seg2_ious
     
 def train(active_mv):
     
@@ -319,10 +324,8 @@ def train(active_mv):
             tic = time.time()
             out_stuff = active_mv.run_step(mvnet_input, mode = 'burnin', is_training = True)
 
-            #import ipdb
-            #ipdb.set_trace()
-            
             summs_burnin = burnin_log(i, out_stuff, time.time()-tic)
+            
             for summ in summs_burnin:
                 active_mv.train_writer.add_summary(summ, i)
 
@@ -439,7 +442,7 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
             print 'max', np.max(lastpred)
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
-        
+
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr, FLAGS.iou_thres)
         eval_log(i_idx, pred_out, final_IoU)
@@ -524,7 +527,6 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             mvnet_input = override_mvnet_input
         
         pred_out = active_mv.predict_vox_list(mvnet_input)
-        
         vox_gtr = np.squeeze(pred_out.rotated_vox_test)
 
         PRINT_SUMMARY_STATISTICS = False
@@ -535,10 +537,33 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             print 'max', np.max(lastpred)
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
+
+        PRINT_SEG_STATISTICES = False
+        if PRINT_SEG_STATISTICES:
+            for i, seg in enumerate([pred_out.pred_seg1_test, pred_out.pred_seg2_test]):
+                for j in range(FLAGS.max_episode_length):
+                    print 'seg statistics %d %d' % (i, j)
+                    print 'min', np.min(seg[j])
+                    print 'max', np.max(seg[j])
+                    print 'mean', np.mean(seg[j])
         
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
+
+        def compute_seg_ious(arr1, arr2):
+            return [
+                replay_mem.calu_IoU(arr1[i], arr2[i], FLAGS.iou_thres)
+                for i in range(FLAGS.max_episode_length)
+            ]
+
+        if FLAGS.use_segs:
+            seg1_IoUs = compute_seg_ious(pred_out.post_seg1_test[:,:,:,:,0], pred_out.pred_seg1_test)
+            seg2_IoUs = compute_seg_ious(pred_out.post_seg2_test[:,:,:,:,0], pred_out.pred_seg2_test)
+        else:
+            seg1_IoUs = None
+            seg2_IoUs = None
+            
         final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr, FLAGS.iou_thres)
-        eval_log(i_idx, pred_out, final_IoU)
+        eval_log(i_idx, pred_out, final_IoU, seg1_IoUs, seg2_IoUs)
         
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)

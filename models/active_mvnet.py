@@ -724,8 +724,10 @@ class ActiveMVnet(object):
 
         flat_features = tf.reshape(feature_tensor, (BS, -1, D))
 
-        def avg_dist(feats1, feats2):
-            distmat = other.chamfer.batch_dist_mat(feats1, feats2)
+        def avg_dist(feats1, feats2, hinge = None):
+            distmat = tf.sqrt(other.chamfer.batch_dist_mat(feats1, feats2) + other.const.eps)
+            if hinge is not None:
+                distmat = tf.clip_by_value(distmat, -1.0, hinge)
             return tf.reduce_mean(distmat)
 
         def dist_from_feat(feat):
@@ -755,30 +757,33 @@ class ActiveMVnet(object):
         push_loss = 0.0
         pull_loss = 0.0
 
-        push_loss -= avg_dist(bg_feats, obj1_feats)
-        push_loss -= avg_dist(bg_feats, obj2_feats)
-        push_loss -= avg_dist(obj1_feats, obj2_feats)
+        push_loss -= avg_dist(bg_feats, obj1_feats, hinge = 1.0)
+        push_loss -= avg_dist(bg_feats, obj2_feats, hinge = 1.0)
+        push_loss -= avg_dist(obj1_feats, obj2_feats, hinge = 1.0)
 
-        pull_loss += avg_dist(bg_feats, bg_feats)
+        #pull_loss += avg_dist(bg_feats, bg_feats)
         pull_loss += avg_dist(obj1_feats, obj1_feats)
         pull_loss += avg_dist(obj2_feats, obj2_feats)
 
         #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
         #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
 
-        total_loss = push_loss + pull_loss
+        total_loss = push_loss + 2 * pull_loss
 
         #### also while we're at it, put together some visualizations
         avg_bg = tf.reduce_mean(bg_feats, axis = 1)
         avg_obj1 = tf.reduce_mean(obj1_feats, axis = 1)
         avg_obj2 = tf.reduce_mean(obj2_feats, axis = 1)
+
+        #import ipdb
+        #ipdb.set_trace()
         
         if self.FLAGS.seg_cluster_mode == 'gt':
             center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
 
         elif self.FLAGS.seg_cluster_mode == 'kcenters':
             assert (self.FLAGS.seg_decision_rule == 'with_occ')
-            flat_mask = tf.reshape(pred_vox, (BS, -1)) 
+            flat_mask = tf.reshape(pred_vox, (BS, -1)) > 0.5
             center_obj1, center_obj2 = other.knn.batch_knn(flat_features, iters = 2, k = 2, mask = flat_mask)
             center_bg = tf.zeros_like(center_obj1) #this is not used...
             
@@ -801,11 +806,17 @@ class ActiveMVnet(object):
             dists = tf.stack([dist_obj1, dist_obj2], axis = 3)
             labels = tf.argmin(dists, axis = 3) + 1
 
-            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * tf.squeeze(pred_vox, axis = -1)
-            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * tf.squeeze(pred_vox, axis = -1)
+            fg_mask = tf.cast(tf.squeeze(pred_vox, axis = -1) > 0.5, tf.float32)
+            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * fg_mask
+            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * fg_mask
+
+        else:
+            raise Exception('bad decision rule')
             
 
         #we can save these for later examination
+        setattr(self, 'post_seg1_' + suffix, obj1)
+        setattr(self, 'post_seg2_' + suffix, obj2)        
         setattr(self, 'pred_seg1_' + suffix, seg_obj1)
         setattr(self, 'pred_seg2_' + suffix, seg_obj2)
         
@@ -1136,8 +1147,8 @@ class ActiveMVnet(object):
     def _create_collections(self):
         dct_from_keys = lambda keys: {key: getattr(self, key) for key in keys}
 
-        maybe_seg_train = ['seg1_batch', 'seg2_batch'] if self.FLAGS.use_segs else []
-        maybe_seg_test = ['seg1_test', 'seg2_test'] if self.FLAGS.use_segs else []
+        maybe_post_seg_train = ['post_seg1_train', 'post_seg2_train'] if self.FLAGS.use_segs else []
+        maybe_post_seg_test = ['post_seg1_test', 'post_seg2_test'] if self.FLAGS.use_segs else []
         maybe_pred_seg_train = ['pred_seg1_train', 'pred_seg2_train'] if self.FLAGS.use_segs else []
         maybe_pred_seg_test = ['pred_seg1_test', 'pred_seg2_test'] if self.FLAGS.use_segs else []
         maybe_seg_train_loss = ['seg_train_loss'] if self.FLAGS.use_segs else []
@@ -1145,7 +1156,7 @@ class ActiveMVnet(object):
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
             ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test', 'vox_pred_test_rot']
-            + maybe_seg_test + maybe_pred_seg_test
+            + maybe_post_seg_test + maybe_pred_seg_test
         ))
 
         basic_list = [
@@ -1179,7 +1190,7 @@ class ActiveMVnet(object):
 
         #debugging purposes
         if self.FLAGS.use_segs:
-            burnin_list += maybe_seg_train + maybe_pred_seg_train
+            burnin_list += maybe_post_seg_train + maybe_pred_seg_train
             
         train_list = basic_list[:] + [
             'loss_act_regu',
