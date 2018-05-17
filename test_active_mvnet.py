@@ -150,21 +150,27 @@ flags.DEFINE_float('init_eps', 0.95, 'initial value for epsilon')
 flags.DEFINE_float('end_eps', 0.05, 'initial value for epsilon')
 flags.DEFINE_float('epsilon', 0, 'epsilon')
 flags.DEFINE_float('gamma', 0.99, 'discount factor for reward')
-flags.DEFINE_string('debug_single', False, 'debug mode: using single model')
+flags.DEFINE_boolean('debug_single', False, 'debug mode: using single model')
 flags.DEFINE_boolean('debug_mode', False, '')
 flags.DEFINE_boolean('GBL_thread', False, '')
 flags.DEFINE_boolean('pose_noise', False, '')
+
+flags.DEFINE_boolean('use_segs', False, '')
+flags.DEFINE_boolean('reproj_mode', False, '')
+flags.DEFINE_string('seg_cluster_mode', 'gt', '')
+flags.DEFINE_string('seg_decision_rule', 'with_occ', '')
+flags.DEFINE_boolean('eval0', False, '')
+
+# some constants i moved inside
+flags.DEFINE_float('BN_INIT_DECAY', 0.5, '')
+flags.DEFINE_float('BN_DECAY_DECAY_RATE', 0.5, '')
+flags.DEFINE_float('BN_DECAY_DECAY_STEP', -1, '')
+flags.DEFINE_float('BN_DECAY_CLIP', 0.99, '')
+flags.DEFINE_boolean('finetune_dqn_only', False, 'use rgb for dqn')
+
 FLAGS = flags.FLAGS
 
-#POINTCLOUDSIZE = FLAGS.num_point
-#if FLAGS.if_deconv:
-#    OUTPUTPOINTS = FLAGS.num_point
-#else:
-#    OUTPUTPOINTS = FLAGS.num_point/2
-FLAGS.BN_INIT_DECAY = 0.5
-FLAGS.BN_DECAY_DECAY_RATE = 0.5
 FLAGS.BN_DECAY_DECAY_STEP = float(FLAGS.decay_step)
-FLAGS.BN_DECAY_CLIP = 0.99
 
 
 def prepare_plot():
@@ -193,20 +199,21 @@ def restore(ae):
     restore_path = get_restore_path()
     latest_checkpoint = tf.train.latest_checkpoint(restore_path)
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
-    ae.saver.restore(ae.sess, latest_checkpoint)
+
+    ae.loader.restore(ae.sess, latest_checkpoint)
     log_string(tf_util.toYellow("----- Restored from %s."%latest_checkpoint))
 
 def restore_from_iter(ae, iter):
     restore_path = get_restore_path()
     ckpt_path = os.path.join(restore_path, 'model.ckpt-{0}'.format(iter))
     print(tf_util.toYellow("----#-> Model restoring from: {} using {} iterations...".format(restore_path, iter)))
-    ae.saver.restore(ae.sess, ckpt_path)
+    ae.loader.restore(ae.sess, ckpt_path)
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
 def restore_pretrain(ae):
     restore_path = FLAGS.pretrain_restore_path
     print(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
-    ae.saver.restore(ae.sess, restore_path)
+    ae.loader.restore(ae.sess, restore_path)
     print(tf_util.toYellow("----- Restored from %s."%restore_path))
 
 def burnin_log(i, out_stuff, t):
@@ -555,7 +562,7 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     loss_list_ = []
         
     for i_idx in xrange(test_episode_num):
-        print('======testing on {}/{} model======'.format(i_idx+1, test_episode_num))
+        print('======active testing on {}/{} model======'.format(i_idx+1, test_episode_num))
         IoU_lists_ = []
         loss_list_ = []
         actions_list = []
@@ -573,8 +580,16 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             category_, model_id_ = model_id.split('/')
             voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(category_, model_id_))
         vox_gt = replay_mem.read_vox(voxel_name)
-
+        
         mvnet_input.put_voxel(vox_gt)
+
+        if FLAGS.use_segs and FLAGS.category == '3333': #this is the only categ for which we have seg data
+            seg1_name = os.path.join('voxels', '{}/{}/obj1.binvox'.format(FLAGS.category, model_id))
+            seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(FLAGS.category, model_id))
+            seg1 = replay_mem.read_vox(seg1_name)
+            seg2 = replay_mem.read_vox(seg2_name)
+            mvnet_input.put_segs(seg1, seg2)
+        
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
         vox_gtr = np.squeeze(pred_out.rotated_vox_test)
@@ -613,6 +628,7 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             }
 
             dump_outputs_model(save_dict, train_i, i_idx, mode='active')
+            
         IoU_lists_ = np.asarray(IoU_lists_)
         loss_list_ = np.asarray(loss_list_)
         actions_list = np.asarray(actions_list)
@@ -810,12 +826,19 @@ if __name__ == "__main__":
             restore_from_iter(agent, FLAGS.test_iter) 
         replay_mem = ReplayMemory(FLAGS)
         rollout_obj = Rollout(agent, senv, replay_mem, FLAGS)
+
+        print 'testing....'
+        
         if FLAGS.test_random:
+            print 'with random policy'
             test_random(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
         elif FLAGS.test_oneway:
+            print 'with oneway policy'
             test_oneway(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
         else:
+            print 'with active policy'
             test_active(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
 
         sys.exit()
-
+    else:
+        raise Exception('training in test script')

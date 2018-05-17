@@ -742,8 +742,8 @@ class ActiveMVnet(object):
 
         BS = int(bg.shape[0])
 
-        if suffix == 'test':
-            obj1 = other.tfpy.summarize_tensor(obj1, 'obj1')
+        #if suffix == 'test':
+        #    obj1 = other.tfpy.summarize_tensor(obj1, 'obj1')
 
         DO_DUMP = False
         if DO_DUMP and suffix == 'test':
@@ -1495,7 +1495,8 @@ class ActiveMVnet(object):
     def select_action(self, mvnet_input, idx, is_training = False):
         
         feed_dict = self.construct_feed_dict(
-            mvnet_input, include_vox = False, include_action = False, include_penalty = False, train_mode = False
+            mvnet_input, include_vox = False, include_action = False, include_penalty = False,
+            include_segs = self.FLAGS.use_segs, train_mode = False
         ) ## both during sampling and testing, train_mode is always False
     
         #if np.random.uniform(low=0.0, high=1.0) > epsilon:
