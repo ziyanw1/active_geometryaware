@@ -1,15 +1,30 @@
 import tensorflow as tf
+import random
+import tfpy
 
-def batch_knn(points, iters = 2, k = 3, mask = None):
+def batch_knn(points, iters = 2, k = 3, mask = None, tries = 1):
     if mask is None:
-        fn = lambda (x, m): knn(x, iters = iters, k = k)
+        fn = lambda (x, m): repeat_knn(x, iters = iters, k = k, tries = tries)
         args = points
     else:
-        fn = lambda (x, m): knn(x, iters = iters, k = k, mask = m)
+        fn = lambda (x, m): repeat_knn(x, iters = iters, k = k, mask = m, tries = tries)
         args = [points, mask]
     return tf.map_fn(fn, args, dtype = [tf.float32]*k)
 
-def knn(points, iters = 2, k = 3, mask = None):
+def repeat_knn(points, iters = 2, k = 3, mask = None, tries = 1):
+    centerss = []
+    costs = []
+    for t in range(tries):
+        centers, cost = knn(points, iters = iters, k = k, mask = mask, retcost = True)
+        centerss.append(centers)
+        costs.append(cost)
+    cost = tf.stack(costs, axis = 0) #T
+    best_idx = tf.argmin(cost)
+    centers = [tf.stack(c, axis = 0) for c in zip(*centerss)] #k of T x D
+    centers = [tf.gather(c, best_idx) for c in centers] #k of D
+    return centers
+
+def knn(points, iters = 2, k = 3, mask = None, retcost = False):
     #this is a pretty crude implementation
     #which creates new tensors for every additional iteration
     #should work ok for small #iters
@@ -32,18 +47,25 @@ def knn(points, iters = 2, k = 3, mask = None):
             return tf.reduce_mean(pts, axis = 0)
     
     #initialization
-    idx = tf.random_uniform(shape = (), maxval = k-1, dtype = tf.int32)
+    idx = tf.random_uniform(shape = (), maxval = tf.shape(points)[0], dtype = tf.int32)
     centers = [tf.gather(points, idx)]
-    for j in range(k-1):
+    for j in range(k):
         dists = dist_mat(centers, points)
         idx = tf.argmax(tf.reduce_min(dists, axis = 0))
         centers.append(tf.gather(points, idx))
+        if j == 0:
+            centers.pop(0)
 
     #iteration
     for i in range(iters):
         dists = dist_mat(centers, points)
         labels = tf.cast(tf.argmin(dists, axis = 0), tf.int32)
+        #if i == iters-1:
+        #    labels = tfpy.print_val(labels, 'labels')
         clusters = tf.dynamic_partition(points, labels, k)
         centers = map(find_center, clusters)
-    
+
+    cost = tf.reduce_max(tf.reduce_min(dists, axis = 0))
+    if retcost:
+        return centers, cost
     return centers

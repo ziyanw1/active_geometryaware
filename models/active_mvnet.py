@@ -6,6 +6,8 @@ import tensorflow.contrib.slim as slim
 from utils import util
 from utils import tf_util
 
+from tensorflow.python.ops import variables as __variables__
+
 from env_data.shapenet_env import ShapeNetEnv, trajectData  
 from lsm.ops import convgru, convlstm, collapse_dims, uncollapse_dims 
 from util_unproj import Unproject_tools 
@@ -41,16 +43,31 @@ class ActiveMVnet(object):
         self._create_summary()
         self._create_collections()
         
-        # Add ops to save and restore all variable 
+        # Add ops to save and restore all variable
         self.saver = tf.train.Saver()
+        self.loader = tf.train.Saver()
+        
         if FLAGS.initial_dqn:
             aggr_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='aggr')
             unet_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='unet')
             dqn_var = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dqn')
             
-            self.pretrain_saver = tf.train.Saver(unet_var+aggr_var, max_to_keep=None)
+            self.pretrain_loader = tf.train.Saver(unet_var+aggr_var, max_to_keep=None)
+            self.pretrain_saver = self.pretrain_loader
         else:
-            self.pretrain_saver = tf.train.Saver(max_to_keep=None)
+            #dont_load_names = ['segfeats']
+            #dont_load_names = ['Adam', 'segfeats']
+            dont_load_names = ['Adam']
+            should_load = lambda name: (not dont_load_names) or max((x in name for x in dont_load_names)) == False
+            var_list = [v for v in __variables__._all_saveable_objects() if should_load(v.name)]
+            
+            print 'loading %d variables' % len(var_list)
+            
+            self.pretrain_loader = tf.train.Saver(max_to_keep=None, var_list = var_list)
+            self.pretrain_saver = tf.train.Saver(
+                max_to_keep=None,
+                var_list = __variables__._all_saveable_objects()
+            )
         
         # create a sess
         config = tf.ConfigProto()
@@ -672,7 +689,7 @@ class ActiveMVnet(object):
 
             
     def _create_segmentation_loss(self):
-        
+
         self.seg_train_loss = self.__create_segmentation_loss(
             self.rotated_vox_batch,
             self.rotated_seg1_batch,
@@ -692,7 +709,7 @@ class ActiveMVnet(object):
 
     def __create_segmentation_loss(self, vox, seg1, seg2, feats, pred_vox, suffix):
         #feats contains feats 1, 2, 3, and 4 viewds
-        #we would like to tile vox and collapse everything into one nice batch...
+        #we would like to tile vox and collapse everything into one nice def...
         
         def time_tile(x):
             x = tf.expand_dims(x, 1)
@@ -712,23 +729,62 @@ class ActiveMVnet(object):
         seg2 = other.tfutil.pool3d(seg2)
         pred_vox = other.tfutil.pool3d(pred_vox)
 
+        D = feats.shape[-1]
+        CHANNELS = 32 #let's try this...
+        feats = feats[:,:,:,:,:CHANNELS]
+
         return self.create_segmentation_loss(bg, seg1, seg2, feats, pred_vox, suffix)
 
     def create_segmentation_loss(self, bg, obj1, obj2, feats, pred_vox, suffix):
 
+        #ignore bg... make our own, since the discrepancies are big due to rounding
+        bg = 1.0 - tf.maximum(obj1, obj2)
+
         BS = int(bg.shape[0])
+
+        if suffix == 'test':
+            obj1 = other.tfpy.summarize_tensor(obj1, 'obj1')
+
+        DO_DUMP = False
+        if DO_DUMP and suffix == 'test':
+            obj1 = other.tfpy.dump_tensor(
+                obj1, '/home/ricsonc/tensordumps/obj1_%d.npy', freq = 1, verbose = True
+            )
+            obj2 = other.tfpy.dump_tensor(
+                obj2, '/home/ricsonc/tensordumps/obj2_%d.npy', freq = 1, verbose = True
+            )
         
         feature_tensor = feats
-        feature_tensor = other.tfutil.unitize(feature_tensor)
+
+        UNITIZE = False
+        if UNITIZE:
+            feature_tensor = other.tfutil.unitize(feature_tensor)
+            
         D = feature_tensor.shape[-1]
 
         flat_features = tf.reshape(feature_tensor, (BS, -1, D))
 
-        def avg_dist(feats1, feats2, hinge = None):
-            distmat = tf.sqrt(other.chamfer.batch_dist_mat(feats1, feats2) + other.const.eps)
-            if hinge is not None:
-                distmat = tf.clip_by_value(distmat, -1.0, hinge)
-            return tf.reduce_mean(distmat)
+        actualBS = BS/self.FLAGS.max_episode_length
+        weights = tf.constant(([0.0] * (self.FLAGS.max_episode_length-1) + [1.0])*actualBS, dtype = tf.float32)
+        
+        def avg_hinge_dist(feats1, feats2, lower = None, upper = None):
+            assert (lower or upper) and not(lower and upper)
+            distmat = other.chamfer.batch_dist_mat(feats1, feats2)
+            #distmat = other.tfpy.summarize_tensor(distmat, 'distmat')
+            eps = other.const.eps + tf.nn.relu(-tf.stop_gradient(tf.reduce_min(distmat))) #0 if positive
+            distmat = tf.sqrt(distmat + eps) 
+
+            if lower:
+                #if dist is 3, lower 1, returns 2
+                distmat = tf.nn.relu(distmat - lower) 
+            if upper:
+                #if dist is 2, upper 5, returns 3
+                distmat = tf.nn.relu(upper - distmat)
+                
+            #weighted mean:
+            dists = tf.reduce_mean(distmat, axis = [1,2])
+            out = tf.reduce_sum(dists * weights) / tf.reduce_sum(weights)
+            return out
 
         def dist_from_feat(feat):
             #BS x D
@@ -754,19 +810,34 @@ class ActiveMVnet(object):
         obj1_feats = foo(obj1)
         obj2_feats = foo(obj2)
 
-        push_loss = 0.0
-        pull_loss = 0.0
+        apply3 = lambda f, x: f(f(x[0], x[1]), x[2])
 
-        push_loss -= avg_dist(bg_feats, obj1_feats, hinge = 1.0)
-        push_loss -= avg_dist(bg_feats, obj2_feats, hinge = 1.0)
-        push_loss -= avg_dist(obj1_feats, obj2_feats, hinge = 1.0)
+        if True:
+            push_loss = 0.0
+            pull_loss = 0.0
 
-        #pull_loss += avg_dist(bg_feats, bg_feats)
-        pull_loss += avg_dist(obj1_feats, obj1_feats)
-        pull_loss += avg_dist(obj2_feats, obj2_feats)
+            push_loss += avg_hinge_dist(bg_feats, obj1_feats, upper = 1.0)
+            push_loss += avg_hinge_dist(bg_feats, obj2_feats, upper = 1.0)
+            push_loss += avg_hinge_dist(obj1_feats, obj2_feats, upper = 1.0)
 
-        #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
-        #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
+            #pull_loss += avg_dist(bg_feats, bg_feats)
+            pull_loss += avg_hinge_dist(obj1_feats, obj1_feats, lower = 0.1)
+            pull_loss += avg_hinge_dist(obj2_feats, obj2_feats, lower = 0.1)
+
+            #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
+            #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
+            
+        else:
+            push_loss = -apply3(tf.minimum, [
+                avg_dist(bg_feats, obj1_feats),
+                avg_dist(bg_feats, obj2_feats),
+                avg_dist(obj1_feats, obj2_feats)
+            ])
+
+            pull_loss = tf.maximum(
+                avg_dist(obj1_feats, obj1_feats),
+                avg_dist(obj2_feats, obj2_feats)
+            )
 
         total_loss = push_loss + 2 * pull_loss
 
@@ -777,41 +848,156 @@ class ActiveMVnet(object):
 
         #import ipdb
         #ipdb.set_trace()
-        
-        if self.FLAGS.seg_cluster_mode == 'gt':
-            center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
 
-        elif self.FLAGS.seg_cluster_mode == 'kcenters':
-            assert (self.FLAGS.seg_decision_rule == 'with_occ')
-            flat_mask = tf.reshape(pred_vox, (BS, -1)) > 0.5
-            center_obj1, center_obj2 = other.knn.batch_knn(flat_features, iters = 2, k = 2, mask = flat_mask)
-            center_bg = tf.zeros_like(center_obj1) #this is not used...
+        flat_mask = tf.reshape(pred_vox, (BS, -1)) > self.FLAGS.iou_thres
+        inputs = [
+            flat_features,
+            flat_mask,
+            bg,
+            obj1 > self.FLAGS.iou_thres,
+            obj2 > self.FLAGS.iou_thres,
+            pred_vox
+        ]
+
+        def cluster(feats, mask, bg, obj1, obj2, pred_vox):
+            from sklearn.cluster import KMeans
+            masked_feats = feats[mask]
+
+            if masked_feats.shape[0] <= 2:
+                print 'WARNING: (near)empty maskedfeats'
+                return np.zeros(obj1.shape), np.zeros(obj2.shape)
             
-        else:
-            raise Exception('bad cluster mode')
+            km = KMeans(n_clusters = 2, n_jobs = 8)
+            km.fit(masked_feats)
+            labels = km.predict(feats)
 
-        dist_bg = dist_from_feat(center_bg)
-        dist_obj1 = dist_from_feat(center_obj1)
-        dist_obj2 = dist_from_feat(center_obj2)
-        
-        if self.FLAGS.seg_decision_rule == 'independent':
-            dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
-            labels = tf.argmin(dists, axis = 3)
+            #possibly swapped
+            pred_obj1 = np.logical_and(labels == 0, mask)
+            pred_obj2 = np.logical_and(labels == 1, mask)
 
-            seg_bg = tf.cast(tf.equal(labels, 0), tf.float32)
-            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32)
-            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32)
+            pred_obj1 = np.reshape(pred_obj1, obj1.shape)
+            pred_obj2 = np.reshape(pred_obj2, obj2.shape)
+
+            def iou(a, b):
+                return (np.sum(np.logical_and(a,b).astype(np.float32)) /
+                        (np.sum(np.logical_or(a,b).astype(np.float32)) + 1E-6))
+
+            iou11 = iou(pred_obj1, obj1)
+            iou12 = iou(pred_obj1, obj2)
+            iou21 = iou(pred_obj2, obj1)
+            iou22 = iou(pred_obj2, obj2)
+
+            sameiou = (iou11 + iou22)/2
+            diffiou = (iou12 + iou21)/2
+
+            ideal_iou = (iou(np.logical_and(np.reshape(mask, obj1.shape), obj1), obj1) +
+                         iou(np.logical_and(np.reshape(mask, obj2.shape), obj2), obj2)) / 2.0
+
+            verbose = False
+            if verbose:
+                print '======'
+                print 'gap iou:', ideal_iou - max(sameiou, diffiou)
             
-        elif self.FLAGS.seg_decision_rule == 'with_occ':
-            dists = tf.stack([dist_obj1, dist_obj2], axis = 3)
-            labels = tf.argmin(dists, axis = 3) + 1
+            if sameiou >= diffiou:
+                if verbose:
+                    print 'same: ', sameiou
+                return pred_obj1, pred_obj2
+            else:
+                if verbose:
+                    print 'diff: ', diffiou
+                return pred_obj2, pred_obj1
+            
+        def batch_cluster_(feats, mask, bg, obj1, obj2, pred_vox):
+            
+            bs = feats.shape[0]
+            seg1s = []
+            seg2s = []
+            
+            for i in range(bs):
+                seg1, seg2 = cluster(feats[i], mask[i], bg[i], obj1[i], obj2[i], pred_vox[i])
+                seg1s.append(seg1)
+                seg2s.append(seg2)
+                
+            seg1s = np.stack(seg1s, axis = 0)
+            seg2s = np.stack(seg2s, axis = 0)
 
-            fg_mask = tf.cast(tf.squeeze(pred_vox, axis = -1) > 0.5, tf.float32)
-            seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * fg_mask
-            seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * fg_mask
+            seg1s = np.squeeze(seg1s)
+            seg2s = np.squeeze(seg2s)
 
-        else:
-            raise Exception('bad decision rule')
+            seg1s = seg1s.astype(np.float32)
+            seg2s = seg2s.astype(np.float32)
+
+            return seg1s, seg2s
+
+        def batch_cluster(*args):
+            from ipdb import launch_ipdb_on_exception
+            with launch_ipdb_on_exception():
+                return batch_cluster_(*args)
+                        
+        seg_obj1, seg_obj2 = tf.py_func(batch_cluster, inputs, [tf.float32, tf.float32])
+        
+        # if self.FLAGS.seg_cluster_mode == 'gt':
+        #     center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
+
+        # elif self.FLAGS.seg_cluster_mode == 'kcenters':
+        #     assert (self.FLAGS.seg_decision_rule == 'with_occ')
+        #     flat_mask = tf.reshape(pred_vox, (BS, -1)) > self.FLAGS.iou_thres
+
+        #     ####
+        #     if DO_DUMP and suffix == 'test':
+        #         flat_mask = other.tfpy.dump_tensor(
+        #             flat_mask, '/home/ricsonc/tensordumps/flat_mask_%d.npy', freq = 1, verbose = True
+        #         )
+                
+        #         flat_features = other.tfpy.dump_tensor(
+        #             flat_features, '/home/ricsonc/tensordumps/flat_feats_%d.npy', freq = 1, verbose = True
+        #         )
+            
+        #     center_obj1, center_obj2 = other.knn.batch_knn(
+        #         flat_features, iters = 2, k = 2, mask = flat_mask, tries = 4
+        #     )
+
+        #     #matching algorithm:            
+        #     d11 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj1 - center_obj1), axis = -1) + other.const.eps)
+        #     d12 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj1 - center_obj2), axis = -1) + other.const.eps)
+        #     d21 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj2 - center_obj1), axis = -1) + other.const.eps)
+        #     d22 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj2 - center_obj2), axis = -1) + other.const.eps)
+
+        #     match_same_cost = d11 + d22
+        #     match_diff_cost = d12 + d21
+        #     match_same_weight = tf.reshape(tf.cast(match_same_cost < match_diff_cost, tf.float32), (-1, 1))
+        #     match_diff_weight = 1.0 - match_same_weight
+
+        #     center_obj1 = match_same_weight * center_obj1 + match_diff_weight * center_obj2
+        #     center_obj2 = match_same_weight * center_obj2 + match_diff_weight * center_obj1
+            
+        #     center_bg = tf.zeros_like(center_obj1) #this is not used...
+            
+        # else:
+        #     raise Exception('bad cluster mode')
+
+        # dist_bg = dist_from_feat(center_bg)
+        # dist_obj1 = dist_from_feat(center_obj1)
+        # dist_obj2 = dist_from_feat(center_obj2)
+        
+        # if self.FLAGS.seg_decision_rule == 'independent':
+        #     dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
+        #     labels = tf.argmin(dists, axis = 3)
+
+        #     seg_bg = tf.cast(tf.equal(labels, 0), tf.float32)
+        #     seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32)
+        #     seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32)
+            
+        # elif self.FLAGS.seg_decision_rule == 'with_occ':
+        #     dists = tf.stack([dist_obj1, dist_obj2], axis = 3)
+        #     labels = tf.argmin(dists, axis = 3) + 1
+
+        #     fg_mask = tf.cast(tf.squeeze(pred_vox, axis = -1) > 0.5, tf.float32)
+        #     seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * fg_mask
+        #     seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * fg_mask
+
+        # else:
+        #     raise Exception('bad decision rule')
             
 
         #we can save these for later examination

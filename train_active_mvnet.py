@@ -177,7 +177,6 @@ if FLAGS.reproj_mode:
     assert not FLAGS.use_segs
     assert FLAGS.burin_opt == 3
 
-
 #POINTCLOUDSIZE = FLAGS.num_point
 #if FLAGS.if_deconv:
 #    OUTPUTPOINTS = FLAGS.num_point
@@ -227,7 +226,7 @@ def restore(ae):
 def restore_pretrain(ae):
     restore_path = FLAGS.pretrain_restore_path
     log_string(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
-    ae.pretrain_saver.restore(ae.sess, restore_path)
+    ae.pretrain_loader.restore(ae.sess, restore_path)
     log_string(tf_util.toYellow("----- Restored from %s."%restore_path))
 
 def restore_from_iter(ae, iter):
@@ -334,11 +333,13 @@ def train(active_mv):
 
             if (((i+1) % FLAGS.test_every_step == 0 and i > FLAGS.burnin_start_iter) or
                 (FLAGS.eval0 and i == FLAGS.burnin_start_iter)):
-                
+
+                assert not FLAGS.reproj_mode
+                override_mvnet_input = batch_to_single_mvinput(mvnet_input) if FLAGS.reproj_mode else None
+                assert override_mvnet_input is None
                 evaluate_burnin(active_mv, FLAGS.test_episode_num, replay_mem, i+1, rollout_obj,
                                 mode=FLAGS.burnin_mode,
-                                override_mvnet_input = (batch_to_single_mvinput(mvnet_input)
-                                                        if FLAGS.reproj_mode else None))
+                                override_mvnet_input = override_mvnet_input)
 
     for i_idx in xrange(FLAGS.max_iter):
 
@@ -489,6 +490,8 @@ def evaluate(active_mv, test_episode_num, replay_mem, train_i, rollout_obj, mode
 
 def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_obj,
                     mode='random', override_mvnet_input = None):
+
+    print 'test_episode_num is', test_episode_num
     
     senv = ShapeNetEnv(FLAGS)
 
@@ -508,6 +511,7 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         #    pred_idx = stop_idx[0, 0]
 
         model_id = rollout_obj.env.current_model
+        print model_id
         voxel_name = os.path.join('voxels', '{}/{}/model.binvox'.format(FLAGS.category, model_id))
         if FLAGS.category == '1111':
             category_, model_id_ = model_id.split('/')
@@ -524,6 +528,7 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         mvnet_input.put_voxel(vox_gt)
 
         if override_mvnet_input is not None:
+            raise Exception('bad')
             mvnet_input = override_mvnet_input
         
         pred_out = active_mv.predict_vox_list(mvnet_input)
@@ -584,6 +589,9 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             }
 
             if FLAGS.use_segs:
+                save_dict['post_seg1_test'] = pred_out.post_seg1_test
+                save_dict['post_seg2_test'] = pred_out.post_seg2_test
+
                 save_dict['pred_seg1_test'] = pred_out.pred_seg1_test
                 save_dict['pred_seg2_test'] = pred_out.pred_seg2_test
 
@@ -800,6 +808,11 @@ def dump_outputs(save_dict, train_i, i_idx, mode=''):
             save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
             seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
             save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
+            
+            seg1_save_name = os.path.join(eval_dir, '{}_{}_gtseg1.binvox'.format(i_idx, i))
+            save_voxel(save_dict['post_seg1_test'][i,:,:,:,0], seg1_save_name)
+            seg2_save_name = os.path.join(eval_dir, '{}_{}_gtseg2.binvox'.format(i_idx, i))
+            save_voxel(save_dict['post_seg2_test'][i,:,:,:,0], seg2_save_name)
 
 def save_voxel(vox, pth):
     THRESHOLD = 0.5

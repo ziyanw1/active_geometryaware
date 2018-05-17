@@ -563,13 +563,15 @@ def voxel_net_3d_v2(inputs, aux = None, bn = True, bn_trainmode = 'train',
         for i, (chan, stride, ksize, padding) in enumerate(zip(chans, strides, ksizes, paddings)):
 
             net = slim.conv3d_transpose(
-                net, chan, ksize, stride=stride, padding=padding, trainable=decoder_trainable
+                net, chan, ksize, stride=stride, padding=padding, trainable=decoder_trainable, 
             )
             #now concatenate on the skip-connection
             net = tf.concat([net, skipcons.pop()], axis = 4)
 
             if net.shape[1] == 32:
-                feats = net
+                #net = tf.stop_gradient(net) #comment this out once segs are reasonably trained
+                feats = slim.conv3d(net, 32, 1, stride = 1, padding = 'SAME', activation_fn = None,
+                                    scope = 'segfeats')
 
             if debug:
                 summ.histogram('voxel_net_3d_dec_%d' % i, net)

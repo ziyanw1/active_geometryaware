@@ -12,7 +12,11 @@ def py_func(func, t):
 
 def py_func0(func, t):
     func_ = lambda t: [func(t), np.zeros_like(t)][1]
-    return tf.cast(py_func(func_, t), t.dtype) + t
+    rval = tf.cast(py_func(func_, t), t.dtype)
+    if t.dtype != tf.bool:
+        return rval + t
+    else:
+        return tf.logical_or(rval, t)
 
 
 def stop_execution(t, msg=''):
@@ -29,8 +33,21 @@ def print_val(t, msg='', delay = 0.0):
             time.sleep(delay) #good for putting in off-sets
         print msg if msg else t.name
         print A
-        return 0
+        return A
     return py_func0(f, t)
+
+def dump_tensor(t, pth, freq = 1, verbose = False):
+    def f(A):
+        if f.count % freq == 0:
+            dest = pth % f.count
+            np.save(dest, A)
+            if verbose:
+                print 'dumped to %s' % dest
+        f.count += 1
+        return A
+    f.count = 0
+    
+    return py_func0(f,t)
 
 def print_msg(t, msg):
     def f(A):
