@@ -1152,11 +1152,17 @@ class ActiveMVnet(object):
         denom1 = tf.reduce_sum(seg_obj1, axis = [1, 2, 3]) + other.const.eps
         denom2 = tf.reduce_sum(seg_obj2, axis = [1, 2, 3]) + other.const.eps
         
-        pred_cls2_logits = tf.reduce_sum(logits * seg_obj1, axis = [1,2,3]) / denom1
-        pred_cls1_logits = tf.reduce_sum(logits * seg_obj2, axis = [1,2,3]) / denom2
+        pred_cls1_logits = tf.reduce_sum(logits * seg_obj1, axis = [1,2,3]) / denom1
+        pred_cls2_logits = tf.reduce_sum(logits * seg_obj2, axis = [1,2,3]) / denom2
 
         setattr(self, 'logits1_' + suffix, pred_cls1_logits)
         setattr(self, 'logits2_' + suffix, pred_cls2_logits)
+
+        # if suffix == 'train':
+        #     cls1 = other.tfpy.print_val(cls1, 'cls1')
+        #     cls2 = other.tfpy.print_val(cls2, 'cls2')
+        #     pred_cls1_logits = other.tfpy.print_val(pred_cls1_logits, 'pcls1')
+        #     pred_cls2_logits = other.tfpy.print_val(pred_cls2_logits, 'pcls2')
         
         cls_loss1 = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels = cls1, logits = pred_cls1_logits)

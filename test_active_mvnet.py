@@ -590,8 +590,23 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(FLAGS.category, model_id))
             seg1 = replay_mem.read_vox(seg1_name)
             seg2 = replay_mem.read_vox(seg2_name)
-            mvnet_input.put_segs(seg1, seg2)
-        
+            #mvnet_input.put_segs(seg1, seg2)
+            
+            cat_name = os.path.join('data/data_cache/blender_renderings/res128_mix4_all', '{}/catgory.txt'.format(model_id))
+            
+            with open(cat_name, 'r') as f:
+                cat1, cat2 = f.readlines()
+
+            nametoonehot = {'02880940': 1,
+                            '03797390': 2,
+                            '02942699': 3,
+                            '03513137': 4}
+                
+            cat1 = nametoonehot[cat1.strip()]
+            cat2 = nametoonehot[cat2.strip()]
+                
+            mvnet_input.put_segs(seg1, seg2, cat1, cat2)
+            
         pred_out = active_mv.predict_vox_list(mvnet_input)
         
         vox_gtr = np.squeeze(pred_out.rotated_vox_test)
@@ -618,6 +633,15 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             seg1_IoUs = None
             seg2_IoUs = None
 
+
+        hardcls1 = np.argmax(pred_out.logits1_test, axis = 1)+1
+        hardcls2 = np.argmax(pred_out.logits2_test, axis = 1)+1
+        print 'cls results...'
+        print pred_out.logits1_test
+        print pred_out.logits2_test
+        print hardcls1 == cat1, hardcls1, cat1
+        print hardcls2 == cat2, hardcls2, cat2
+            
         segious = (seg1_IoUs, seg2_IoUs)
         print segious
         IoUs = []
