@@ -1097,15 +1097,20 @@ class ActiveMVnet(object):
 
         ################################
         #now also create the cls loss
+
+        cls = other.tfpy.summarize_tensor(cls, 'clssumm')
         
         cls_loss = tf.nn.softmax_cross_entropy_with_logits(
             labels = cls,
             logits = logits
         )
-        cls_loss = tf.reduce_mean(cls_loss)
-        
+
         seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
         seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1))        
+        
+        cls_loss_mask = tf.squeeze(obj1+obj2)
+        cls_loss = tf.reduce_mean(cls_loss * cls_loss_mask)
+        
 
         final_obj1_cls = tf.reduce_mean(logits * seg_obj1, axis = [1, 2, 3])
         final_obj2_cls = tf.reduce_mean(logits * seg_obj2, axis = [1,2,3])

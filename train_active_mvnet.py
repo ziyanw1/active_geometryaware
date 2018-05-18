@@ -583,11 +583,13 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             seg1_IoUs = None
             seg2_IoUs = None
 
-        hardcls1 = np.argmax(pred_out.cls1_test, axis = 1)
-        hardcls2 = np.argmax(pred_out.cls2_test, axis = 1)
+        #we disallow background class...
+        hardcls1 = np.argmax(pred_out.cls1_test[:,1:], axis = 1)+1
+        hardcls2 = np.argmax(pred_out.cls2_test[:,1:], axis = 1)+1
         print 'cls results...'
-        print hardcls1 == cat1, cat1
-        print hardcls2 == cat2, cat2  
+        print pred_out.cls1_test, pred_out.cls2_test
+        print hardcls1 == cat1, hardcls1, cat1
+        print hardcls2 == cat2, hardcls2, cat2
             
         final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr, FLAGS.iou_thres)
         eval_log(i_idx, pred_out, final_IoU, seg1_IoUs, seg2_IoUs)
