@@ -1102,12 +1102,16 @@ class ActiveMVnet(object):
             labels = cls,
             logits = logits
         )
+        cls_loss = tf.reduce_mean(cls_loss)
+        
+        seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
+        seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1))        
 
-        seg_obj1.set_shape((None, 32, 32, 32, 1))
-        seg_obj2.set_shape((None, 32, 32, 32, 1))
+        final_obj1_cls = tf.reduce_mean(logits * seg_obj1, axis = [1, 2, 3])
+        final_obj2_cls = tf.reduce_mean(logits * seg_obj2, axis = [1,2,3])
+        setattr(self, 'cls1_' + suffix, final_obj1_cls)
+        setattr(self, 'cls2_' + suffix, final_obj2_cls)
 
-        self.final_obj1_cls = tf.reduce_mean(logits * seg_obj1, axis = [1, 2, 3])
-        self.final_obj2_cls = tf.reduce_mean(logits * seg_obj2, axis = [1,2,3])
 
         return total_loss, cls_loss
     
@@ -1439,9 +1443,11 @@ class ActiveMVnet(object):
 
         maybe_post_seg_train = ['post_seg1_train', 'post_seg2_train'] if self.FLAGS.use_segs else []
         maybe_post_seg_test = ['post_seg1_test', 'post_seg2_test'] if self.FLAGS.use_segs else []
-        maybe_pred_seg_train = ['pred_seg1_train', 'pred_seg2_train'] if self.FLAGS.use_segs else []
+        
+        maybe_pred_seg_train = (['pred_seg1_train', 'pred_seg2_train', 'cls1_train', 'cls2_train']
+                                if self.FLAGS.use_segs else [])
         maybe_pred_seg_test = (['pred_seg1_test', 'pred_seg2_test', 'seg_obj1_rot', 'seg_obj2_rot',
-                                'final_obj1_cls', 'final_obj2_cls']
+                                'cls1_test', 'cls2_test']
                                if self.FLAGS.use_segs else [])
         maybe_seg_train_loss = ['seg_train_loss', 'cls_train_loss'] if self.FLAGS.use_segs else []
         maybe_seg_test_loss = ['seg_test_loss', 'cls_test_loss'] if self.FLAGS.use_segs else []
@@ -1543,7 +1549,8 @@ class ActiveMVnet(object):
                 placeholders.penalty = self.penalty_list_batch
             if include_segs:
                 placeholders.seg1 = self.seg1_batch
-                placeholders.seg2 = self.seg2_batch                
+                placeholders.seg2 = self.seg2_batch
+                placeholders.cls = self.cls_batch
 
         else:
             placeholders.rgb = self.RGB_list_test
@@ -1561,6 +1568,7 @@ class ActiveMVnet(object):
             if include_segs:
                 placeholders.seg1 = self.seg1_test
                 placeholders.seg2 = self.seg2_test
+                placeholders.cls = self.cls_test
 
         return placeholders
 
@@ -1588,7 +1596,7 @@ class ActiveMVnet(object):
             assert mvnet_inputs.penalty is not None
             keys.append('penalty')
         if include_segs:
-            keys.extend(['seg1', 'seg2'])
+            keys.extend(['seg1', 'seg2', 'cls'])
         
             
         for key in keys:

@@ -238,16 +238,14 @@ def restore_from_iter(ae, iter):
 
 def burnin_log(i, out_stuff, t):
 
-    import ipdb
-    ipdb.set_trace()
-    
     recon_loss = out_stuff.recon_loss
     critic_loss = out_stuff.critic_loss
     seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
+    cls_loss = out_stuff.cls_train_loss if FLAGS.use_segs else 0.0
     reproj_loss = out_stuff.reproj_train_loss if FLAGS.burin_opt == 3 else 0.0
     
-    log_string('Burn in iter: {}, recon_loss: {:.4f}, critic_loss: {:.4f}, seg_loss: {:.4f}, reproj_loss: {:.4f}, unproject time: {:.2f}s'.format(
-        i, recon_loss, critic_loss, seg_loss, reproj_loss, t))
+    log_string('Burn in iter: {}, recon_loss: {:.4f}, critic_loss: {:.4f}, seg_loss: {:.4f}, cls_loss: {:.4f}, reproj_loss: {:.4f}, unproject time: {:.2f}s'.format(
+        i, recon_loss, critic_loss, seg_loss, cls_loss, reproj_loss, t))
     
     summary_recon = tf.Summary(value=[tf.Summary.Value(tag='burin/loss_recon', simple_value=recon_loss)])
     summary_critic = tf.Summary(value=[tf.Summary.Value(tag='burin/critic_loss', simple_value=critic_loss)])
@@ -584,6 +582,12 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         else:
             seg1_IoUs = None
             seg2_IoUs = None
+
+        hardcls1 = np.argmax(pred_out.cls1_test, axis = 1)
+        hardcls2 = np.argmax(pred_out.cls2_test, axis = 1)
+        print 'cls results...'
+        print hardcls1 == cat1, cat1
+        print hardcls2 == cat2, cat2  
             
         final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr, FLAGS.iou_thres)
         eval_log(i_idx, pred_out, final_IoU, seg1_IoUs, seg2_IoUs)
@@ -591,9 +595,6 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
         rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_list.append(final_IoU)
         loss_list.append(np.mean(pred_out.recon_loss_list_test))
-
-        #import ipdb
-        #ipdb.set_trace()
         
         if FLAGS.if_save_eval:
             
