@@ -584,10 +584,11 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             seg2_IoUs = None
 
         #we disallow background class...
-        hardcls1 = np.argmax(pred_out.cls1_test[:,1:], axis = 1)+1
-        hardcls2 = np.argmax(pred_out.cls2_test[:,1:], axis = 1)+1
+        hardcls1 = np.argmax(pred_out.logits1_test, axis = 1)+1
+        hardcls2 = np.argmax(pred_out.logits2_test, axis = 1)+1
         print 'cls results...'
-        print pred_out.cls1_test, pred_out.cls2_test
+        print pred_out.logits1_test
+        print pred_out.logits2_test
         print hardcls1 == cat1, hardcls1, cat1
         print hardcls2 == cat2, hardcls2, cat2
             

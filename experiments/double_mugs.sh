@@ -13,7 +13,7 @@ cd ..
 
 python train_active_mvnet.py --is_training=True --LOG_DIR=log_agent_all --task_name='asdf9'     \
  --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-3 --burn_in_length=10 --burn_in_iter=10001 \
- --test_every_step=100 --save_every_step=200 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
+ --test_every_step=10 --save_every_step=500 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
   --resolution=128 --category='3333' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \
  --use_coef=False --loss_coef=5 --if_save_eval=True --test_episode_num=10 --GBL_thread=True --reward_weight=10 \
 --delta=20.0 --reg_act=0.01 --penalty_weight=0 --finetune_dqn_only=True --gamma=0 --burin_opt=0 \

@@ -110,7 +110,9 @@ class ActiveMVnet(object):
         self.vox_batch = self.train_provider.vox_ph
         self.seg1_batch = self.train_provider.seg1_ph
         self.seg2_batch = self.train_provider.seg2_ph
-        self.cls_batch = self.train_provider.cls_ph                
+        self.cls_batch = self.train_provider.cls_ph
+        self.cls1_batch = self.train_provider.cls1_ph
+        self.cls2_batch = self.train_provider.cls2_ph        
         
         self.RGB_list_test = self.test_provider.rgb_ph
         self.invZ_list_test = self.test_provider.invz_ph
@@ -123,6 +125,8 @@ class ActiveMVnet(object):
         self.seg1_test = self.test_provider.seg1_ph
         self.seg2_test = self.test_provider.seg2_ph
         self.cls_test = self.test_provider.cls_ph
+        self.cls1_test = self.test_provider.cls1_ph
+        self.cls2_test = self.test_provider.cls2_ph        
 
     def _create_ground_truth_voxels(self):
         az0_train = self.azimuth_list_batch[:,0,0]
@@ -152,7 +156,11 @@ class ActiveMVnet(object):
         self.rotated_seg1_test = rotate_voxels(self.seg1_test, az0_test, el0_test)
         self.rotated_seg2_test = rotate_voxels(self.seg2_test, az0_test, el0_test)
 
+
+        #self.cls_batch = other.tfpy.summarize_tensor(self.cls_batch, 'cb')
         self.rotated_cls_batch = rotate_voxels(self.cls_batch, az0_train, el0_train, expand = False)
+        #self.rotated_cls_batch = other.tfpy.summarize_tensor(self.rotated_cls_batch, 'rcb')
+        
         self.rotated_cls_test = rotate_voxels(self.cls_test, az0_test, el0_test, expand = False)
         
         self.rotated_vox_list_batch = tile_voxels(self.rotated_vox_batch)
@@ -748,6 +756,7 @@ class ActiveMVnet(object):
             self.rotated_seg1_batch,
             self.rotated_seg2_batch,
             self.rotated_cls_batch,
+            self.cls1_batch, self.cls2_batch,
             self.vox_list_feats,
             self.vox_list_pred,
             'train'
@@ -757,12 +766,13 @@ class ActiveMVnet(object):
             self.rotated_seg1_test,
             self.rotated_seg2_test,
             self.rotated_cls_test,
+            self.cls1_test, self.cls2_test,
             self.vox_test_feats,
             self.vox_pred_test_, #we don't want self.vox_pred_test!
             'test'
         )
 
-    def __create_segmentation_loss(self, vox, seg1, seg2, cls, feats, pred_vox, suffix):
+    def __create_segmentation_loss(self, vox, seg1, seg2, cls, cls1, cls2, feats, pred_vox, suffix):
         #feats contains feats 1, 2, 3, and 4 viewds
         #we would like to tile vox and collapse everything into one nice def...
 
@@ -776,8 +786,13 @@ class ActiveMVnet(object):
         seg2 = time_tile(seg2)
         cls = time_tile(cls)
 
+        cls1 = tf.tile(tf.expand_dims(cls1, 1), [1, self.FLAGS.max_episode_length, 1])
+        cls2 = tf.tile(tf.expand_dims(cls2, 1), [1, self.FLAGS.max_episode_length, 1])        
+
         feats = self.collapse_time(feats)
         pred_vox = self.collapse_time(pred_vox)
+        cls1 = self.collapse_time(cls1)
+        cls2 = self.collapse_time(cls2)        
         
         bg = 1.0 - vox
         bg = other.tfutil.pool3d(bg)
@@ -788,14 +803,14 @@ class ActiveMVnet(object):
 
         D = feats.shape[-1]
         
-        CHANNELS = 32-5 #let's try this...
+        CHANNELS = 32-4 #let's try this...
         feats_ = feats[:,:,:,:,:CHANNELS]
         logits = feats[:,:,:,:,CHANNELS:]
         feats = feats_
         
-        return self.create_segmentation_loss(bg, seg1, seg2, cls, feats, logits, pred_vox, suffix)
+        return self.create_segmentation_loss(bg, seg1, seg2, cls, cls1, cls2, feats, logits, pred_vox, suffix)
 
-    def create_segmentation_loss(self, bg, obj1, obj2, cls, feats, logits, pred_vox, suffix):
+    def create_segmentation_loss(self, bg, obj1, obj2, cls, cls1, cls2, feats, logits, pred_vox, suffix):
 
         #ignore bg... make our own, since the discrepancies are big due to rounding
         bg = 1.0 - tf.maximum(obj1, obj2)
@@ -1098,25 +1113,58 @@ class ActiveMVnet(object):
         ################################
         #now also create the cls loss
 
-        cls = other.tfpy.summarize_tensor(cls, 'clssumm')
+        # cls_loss = tf.nn.softmax_cross_entropy_with_logits(
+        #     labels = cls,
+        #     logits = logits
+        # )
+
+        # seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
+        # seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1))        
         
-        cls_loss = tf.nn.softmax_cross_entropy_with_logits(
-            labels = cls,
-            logits = logits
-        )
+        # cls_loss_mask = tf.squeeze(obj1+obj2)
+        # cls_loss = tf.reduce_mean(cls_loss * cls_loss_mask) * 20 #just to make it even...`
+
+        # probs = tf.nn.softmax(logits)
+        # mask1 = seg_obj1
+        # mask2 = seg_obj2
+        
+        # #wew
+        # if False:
+        #     probs = cls
+        #     mask1 = obj1
+        #     mask2 = obj2
+        
+        # denom1 = tf.reduce_sum(mask1, axis = [1, 2, 3]) + other.const.eps
+        # denom2 = tf.reduce_sum(mask2, axis = [1, 2, 3]) + other.const.eps        
+        
+        # final_obj1_cls = tf.reduce_sum(probs * mask1, axis = [1, 2, 3]) / denom1
+        # final_obj2_cls = tf.reduce_sum(probs * mask2, axis = [1,2,3])  / denom2
+        
+        # setattr(self, 'cls1_' + suffix, final_obj1_cls)
+        # setattr(self, 'cls2_' + suffix, final_obj2_cls)
+
+        #ok... attempt number 2
+
 
         seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
-        seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1))        
-        
-        cls_loss_mask = tf.squeeze(obj1+obj2)
-        cls_loss = tf.reduce_mean(cls_loss * cls_loss_mask)
-        
+        seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1)) 
 
-        final_obj1_cls = tf.reduce_mean(logits * seg_obj1, axis = [1, 2, 3])
-        final_obj2_cls = tf.reduce_mean(logits * seg_obj2, axis = [1,2,3])
-        setattr(self, 'cls1_' + suffix, final_obj1_cls)
-        setattr(self, 'cls2_' + suffix, final_obj2_cls)
+        denom1 = tf.reduce_sum(seg_obj1, axis = [1, 2, 3]) + other.const.eps
+        denom2 = tf.reduce_sum(seg_obj2, axis = [1, 2, 3]) + other.const.eps
+        
+        pred_cls2_logits = tf.reduce_sum(logits * seg_obj1, axis = [1,2,3]) / denom1
+        pred_cls1_logits = tf.reduce_sum(logits * seg_obj2, axis = [1,2,3]) / denom2
 
+        setattr(self, 'logits1_' + suffix, pred_cls1_logits)
+        setattr(self, 'logits2_' + suffix, pred_cls2_logits)
+        
+        cls_loss1 = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(labels = cls1, logits = pred_cls1_logits)
+        )
+        cls_loss2 = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(labels = cls2, logits = pred_cls2_logits)
+        )
+        cls_loss = cls_loss1+cls_loss2
 
         return total_loss, cls_loss
     
@@ -1449,10 +1497,10 @@ class ActiveMVnet(object):
         maybe_post_seg_train = ['post_seg1_train', 'post_seg2_train'] if self.FLAGS.use_segs else []
         maybe_post_seg_test = ['post_seg1_test', 'post_seg2_test'] if self.FLAGS.use_segs else []
         
-        maybe_pred_seg_train = (['pred_seg1_train', 'pred_seg2_train', 'cls1_train', 'cls2_train']
+        maybe_pred_seg_train = (['pred_seg1_train', 'pred_seg2_train', 'logits1_train', 'logits2_train']
                                 if self.FLAGS.use_segs else [])
         maybe_pred_seg_test = (['pred_seg1_test', 'pred_seg2_test', 'seg_obj1_rot', 'seg_obj2_rot',
-                                'cls1_test', 'cls2_test']
+                                'logits1_test', 'logits2_test']
                                if self.FLAGS.use_segs else [])
         maybe_seg_train_loss = ['seg_train_loss', 'cls_train_loss'] if self.FLAGS.use_segs else []
         maybe_seg_test_loss = ['seg_test_loss', 'cls_test_loss'] if self.FLAGS.use_segs else []
@@ -1556,6 +1604,8 @@ class ActiveMVnet(object):
                 placeholders.seg1 = self.seg1_batch
                 placeholders.seg2 = self.seg2_batch
                 placeholders.cls = self.cls_batch
+                placeholders.cls1 = self.cls1_batch
+                placeholders.cls2 = self.cls2_batch                
 
         else:
             placeholders.rgb = self.RGB_list_test
@@ -1574,6 +1624,9 @@ class ActiveMVnet(object):
                 placeholders.seg1 = self.seg1_test
                 placeholders.seg2 = self.seg2_test
                 placeholders.cls = self.cls_test
+                placeholders.cls1 = self.cls1_test
+                placeholders.cls2 = self.cls2_test                
+                
 
         return placeholders
 
@@ -1601,7 +1654,7 @@ class ActiveMVnet(object):
             assert mvnet_inputs.penalty is not None
             keys.append('penalty')
         if include_segs:
-            keys.extend(['seg1', 'seg2', 'cls'])
+            keys.extend(['seg1', 'seg2', 'cls', 'cls1', 'cls2'])
         
             
         for key in keys:
@@ -1731,6 +1784,8 @@ class ShapeProvider(object):
         self.seg1_shape = self.vox_shape
         self.seg2_shape = self.vox_shape        
         self.cls_shape = (self.BS, FLAGS.voxel_resolution, FLAGS.voxel_resolution, FLAGS.voxel_resolution, 5)
+        self.cls1_shape = (self.BS, 4)
+        self.cls2_shape = (self.BS, 4)
         
         self.azimuth_shape = self.make_shape((1,))
         self.elevation_shape = self.make_shape((1,))
@@ -1745,6 +1800,8 @@ class ShapeProvider(object):
             'seg1': np.float32,
             'seg2': np.float32,
             'cls': np.float32,
+            'cls1': np.float32,
+            'cls2': np.float32,            
             'azimuth': np.float32,
             'elevation': np.float32,
             'action': np.int32,
@@ -1754,14 +1811,14 @@ class ShapeProvider(object):
     def make_np_zeros(self, dest = None, suffix = '_np'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'cls', 'azimuth', 'elevation', 'action', 'penalty']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'cls', 'cls1', 'cls2', 'azimuth', 'elevation', 'action', 'penalty']:
             arr = np.zeros(getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(dest, key+suffix, arr)
 
     def make_tf_ph(self, dest = None, suffix = '_ph'):
         if dest is None:
             dest = self
-        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'cls', 'azimuth', 'elevation', 'action', 'penalty']:
+        for key in ['rgb', 'invz', 'mask', 'vox', 'seg1', 'seg2', 'cls', 'cls1', 'cls2', 'azimuth', 'elevation', 'action', 'penalty']:
             ph = tf.placeholder(shape = getattr(self, key+'_shape'), dtype = self.dtypes[key])
             setattr(self, key+suffix, ph)
         
@@ -1788,6 +1845,9 @@ class MVInputs(object):
         self.cls[batch_idx, ..., cat2] = seg2
         self.cls[batch_idx, ..., 0] = 1.0 - np.sum(self.cls[batch_idx, ..., 1:], axis = -1, keepdims = False)
         self.cls = np.clip(self.cls, 0.0, 1.0)
+
+        self.cls1[batch_idx, cat1-1] = 1.0
+        self.cls2[batch_idx, cat2-1] = 1.0
         
     def put(self, single_mvinput, episode_idx, batch_idx = 0):
         assert 0 <= batch_idx < self.BS
