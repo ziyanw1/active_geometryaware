@@ -33,7 +33,10 @@ azim_all = azim_all[0:-1]
 azim_for_init = np.linspace(0, 360, 9)
 azim_for_init = np.asarray([0, 40, 90, 120, 180, 210, 270, 330])
 elev_all = np.linspace(10, 60, 6)
-elev_for_init = np.asarray([20, 40, 60]) 
+
+elev_for_init = np.asarray([20, 40, 60])
+#print 'WARNING -- USING FIXED ELEV INIT\n'*10
+#elev_for_init = np.asarray([20, 20, 20])
 
 class ShapeNetEnv():
     def __init__(self, FLAGS):

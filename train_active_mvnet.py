@@ -237,6 +237,10 @@ def restore_from_iter(ae, iter):
     print(tf_util.toYellow("----- Restored from %s."%ckpt_path))
 
 def burnin_log(i, out_stuff, t):
+
+    import ipdb
+    ipdb.set_trace()
+    
     recon_loss = out_stuff.recon_loss
     critic_loss = out_stuff.critic_loss
     seg_loss = out_stuff.seg_train_loss if FLAGS.use_segs else 0.0
@@ -523,7 +527,21 @@ def evaluate_burnin(active_mv, test_episode_num, replay_mem, train_i, rollout_ob
             seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(FLAGS.category, model_id))
             seg1 = replay_mem.read_vox(seg1_name)
             seg2 = replay_mem.read_vox(seg2_name)
-            mvnet_input.put_segs(seg1, seg2)
+            
+            cat_name = os.path.join('data/data_cache/blender_renderings/res128_mix4_all', '{}/catgory.txt'.format(model_id))
+            
+            with open(cat_name, 'r') as f:
+                cat1, cat2 = f.readlines()
+
+            nametoonehot = {'02880940': 1,
+                            '03797390': 2,
+                            '02942699': 3,
+                            '03513137': 4}
+                
+            cat1 = nametoonehot[cat1.strip()]
+            cat2 = nametoonehot[cat2.strip()]
+                
+            mvnet_input.put_segs(seg1, seg2, cat1, cat2)
 
         mvnet_input.put_voxel(vox_gt)
 

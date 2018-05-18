@@ -419,7 +419,21 @@ class ReplayMemory():
                 seg2_name = os.path.join('voxels', '{}/{}/obj2.binvox'.format(self.FLAGS.category, model_id))
                 seg1 = self.read_vox(seg1_name)
                 seg2 = self.read_vox(seg2_name)
-                mvinputs.put_segs(seg1, seg2, batch_idx = b_idx)
+                
+                cat_name = os.path.join('data/data_cache/blender_renderings/res128_mix4_all', '{}/catgory.txt'.format(model_id))
+
+                with open(cat_name, 'r') as f:
+                    cat1, cat2 = f.readlines()
+
+                nametoonehot = {'02880940': 1,
+                                '03797390': 2,
+                                '02942699': 3,
+                                '03513137': 4}
+
+                cat1 = nametoonehot[cat1.strip()]
+                cat2 = nametoonehot[cat2.strip()]
+                
+                mvinputs.put_segs(seg1, seg2, cat1, cat2, batch_idx = b_idx)
 
             for l_idx in range(self.max_episode_length):
                 

@@ -213,7 +213,7 @@ def restore_from_iter(ae, iter):
 def restore_pretrain(ae):
     restore_path = FLAGS.pretrain_restore_path
     print(tf_util.toYellow("----#-> Model restoring from: %s..."%restore_path))
-    ae.loader.restore(ae.sess, restore_path)
+    ae.pretrain_loader.restore(ae.sess, restore_path)
     print(tf_util.toYellow("----- Restored from %s."%restore_path))
 
 def burnin_log(i, out_stuff, t):
@@ -559,11 +559,13 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     #epsilon = FLAGS.init_eps
     rewards_list = []
     IoU_list_ = []
+    seg_list_ = []
     loss_list_ = []
         
     for i_idx in xrange(test_episode_num):
         print('======active testing on {}/{} model======'.format(i_idx+1, test_episode_num))
         IoU_lists_ = []
+        seg_lists_ = []
         loss_list_ = []
         actions_list = []
 
@@ -602,15 +604,35 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
             print 'max', np.max(lastpred)
             print 'mean', np.mean(lastpred)
             print 'std', np.std(lastpred)
-        
+
+        def compute_seg_ious(arr1, arr2):
+            return [
+                replay_mem.calu_IoU(arr1[i], arr2[i], FLAGS.iou_thres)
+                for i in range(FLAGS.max_episode_length)
+            ]
+
+        if FLAGS.use_segs:
+            seg1_IoUs = compute_seg_ious(pred_out.post_seg1_test[:,:,:,:,0], pred_out.pred_seg1_test)
+            seg2_IoUs = compute_seg_ious(pred_out.post_seg2_test[:,:,:,:,0], pred_out.pred_seg2_test)
+        else:
+            seg1_IoUs = None
+            seg2_IoUs = None
+
+        segious = (seg1_IoUs, seg2_IoUs)
+        print segious
         IoUs = []
         for vi in range(FLAGS.max_episode_length):
-            IoUs.append(replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr), FLAGS.iou_thres))
+            IoUs.append(
+                replay_mem.calu_IoU(np.squeeze(pred_out.vox_pred_test[vi]), np.squeeze(vox_gtr), FLAGS.iou_thres)
+            )
+
         #final_IoU = replay_mem.calu_IoU(pred_out.vox_pred_test[-1], vox_gtr)
         #eval_log(i_idx, pred_out, final_IoU)
         
         #rewards_list.append(np.sum(pred_out.reward_raw_test))
         IoU_lists_.append(IoUs)
+        seg_list_.append(segious)
+        IoU_list_.append(IoUs)        
         loss_list_.append(pred_out.recon_loss_list_test)
         actions_list.append(actions)
 
@@ -627,13 +649,49 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
                 'voxel_rot_list': np.squeeze(pred_out.vox_pred_test_rot)
             }
 
+            if FLAGS.use_segs:
+                save_dict['post_seg1_test'] = pred_out.post_seg1_test
+                save_dict['post_seg2_test'] = pred_out.post_seg2_test
+
+                save_dict['pred_seg1_test'] = pred_out.pred_seg1_test
+                save_dict['pred_seg2_test'] = pred_out.pred_seg2_test
+
+                save_dict['pred_seg1_rot'] = pred_out.seg_obj1_rot
+                save_dict['pred_seg2_rot'] = pred_out.seg_obj2_rot
+                
+                save_dict['reproj_mask'] = pred_out.reprojected_mask
+                save_dict['segmask1'] = pred_out.segmask2
+                save_dict['segmask2'] = pred_out.segmask1
+            
+
             dump_outputs_model(save_dict, train_i, i_idx, mode='active')
             
         IoU_lists_ = np.asarray(IoU_lists_)
         loss_list_ = np.asarray(loss_list_)
         actions_list = np.asarray(actions_list)
         save_dict = {'IoU_list': IoU_lists_, 'loss_list': loss_list_, 'actions_list': actions_list}
+        print 'dumping...'
         dump_outputs(save_dict, train_i, i_idx, mode='active')
+        print 'done'
+
+    #let's compute the average iou and segiou....
+    #import ipdb
+    #ipdb.set_trace()
+
+    l = len(seg_list_)
+    sum_seg = np.zeros(4, np.float32)
+    sum_iou = np.zeros(4, np.float32)
+    for i in range(l):
+        sum_seg += np.array(seg_list_[i][0])
+        sum_seg += np.array(seg_list_[i][1])
+        sum_iou += np.array(IoU_list_[i])
+    sum_seg /= l*2
+    sum_iou /= l
+    print '='*80
+    print 'seg iou:', sum_seg
+    print 'occ iou:', sum_iou
+
+    print 'bye'
             
     #rewards_list = np.asarray(rewards_list)
     #IoU_list = np.asarray(IoU_list)
@@ -794,13 +852,40 @@ def dump_outputs_model(save_dict, train_i, i_idx, mode=''):
 
         img_save_name = os.path.join(eval_dir, '{}_rgb{}_{}.png'.format(i_idx, i, mode))
         other.img.imsave01(img_save_name, save_dict['RGB_list'][0, i])
-    
+
+        img_save_name = os.path.join(eval_dir, '{}_reproj{}_{}.png'.format(i_idx, i, mode))
+        other.img.imsave01(img_save_name, np.squeeze(save_dict['reproj_mask'][i]))
+
+        img_save_name = os.path.join(eval_dir, '{}_segmask1{}_{}.png'.format(i_idx, i, mode))
+        other.img.imsave01(img_save_name, np.squeeze(save_dict['segmask1'][i]))
+
+        img_save_name = os.path.join(eval_dir, '{}_segmask2{}_{}.png'.format(i_idx, i, mode))
+        other.img.imsave01(img_save_name, np.squeeze(save_dict['segmask2'][i]))
+        
+        if FLAGS.use_segs:
+            
+            seg1_save_name = os.path.join(eval_dir, '{}_{}_seg1.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg1_test'][i], seg1_save_name)
+            seg2_save_name = os.path.join(eval_dir, '{}_{}_seg2.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg2_test'][i], seg2_save_name)
+            
+            seg1_save_name = os.path.join(eval_dir, '{}_{}_gtseg1.binvox'.format(i_idx, i))
+            save_voxel(save_dict['post_seg1_test'][i,:,:,:,0], seg1_save_name)
+            seg2_save_name = os.path.join(eval_dir, '{}_{}_gtseg2.binvox'.format(i_idx, i))
+            save_voxel(save_dict['post_seg2_test'][i,:,:,:,0], seg2_save_name)
+            
+            seg1_save_name = os.path.join(eval_dir, '{}_{}_segrot1.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg1_rot'][i,:,:,:,0], seg1_save_name)
+            seg2_save_name = os.path.join(eval_dir, '{}_{}_segrot2.binvox'.format(i_idx, i))
+            save_voxel(save_dict['pred_seg2_rot'][i,:,:,:,0], seg2_save_name)
+        
 def save_voxel(vox, pth):
+    s = vox.shape[1]
     THRESHOLD = 0.5
     vox = np.transpose(vox, (2, 1, 0))
     binvox_obj = other.binvox_rw.Voxels(
         vox > THRESHOLD,
-        dims = [FLAGS.voxel_resolution]*3,
+        dims = [s]*3,
         translate = [0.0, 0.0, 0.0],
         scale = 1.0,
         axis_order = 'xyz'
@@ -838,7 +923,8 @@ if __name__ == "__main__":
         else:
             print 'with active policy'
             test_active(agent, FLAGS.test_episode_num, replay_mem, FLAGS.test_iter, rollout_obj)
-
+            
+        print 'done'
         sys.exit()
     else:
         raise Exception('training in test script')
