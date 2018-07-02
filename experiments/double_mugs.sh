@@ -26,7 +26,7 @@ cd ..
 #works with asdf1, ckpt 5000
 
 #now let's test...
-python test_active_mvnet.py --LOG_DIR=log_agent_all --task_name='asdf10_test_v1'     \
+python test_active_mvnet.py --LOG_DIR=log_agent_all --task_name='asdf10_test_v2'     \
  --max_episode_length=4 --reward_type='IoU' --learning_rate=1e-3 --burn_in_length=10 --burn_in_iter=10001 \
  --test_every_step=1 --save_every_step=1000 --max_iter=10000 --batch_size=4 --voxel_resolution=64 \
   --resolution=128 --category='3333' --unet_name='U_VALID' --agg_name='GRU' --mem_length=100 \

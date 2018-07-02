@@ -561,7 +561,8 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     IoU_list_ = []
     seg_list_ = []
     loss_list_ = []
-        
+    acc_list_ = []
+    
     for i_idx in xrange(test_episode_num):
         print('======active testing on {}/{} model======'.format(i_idx+1, test_episode_num))
         IoU_lists_ = []
@@ -641,6 +642,9 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         print pred_out.logits2_test
         print hardcls1 == cat1, hardcls1, cat1
         print hardcls2 == cat2, hardcls2, cat2
+
+        acc_list_.append(hardcls1 == cat1)
+        acc_list_.append(hardcls2 == cat2)
             
         segious = (seg1_IoUs, seg2_IoUs)
         print segious
@@ -686,7 +690,9 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
                 save_dict['reproj_mask'] = pred_out.reprojected_mask
                 save_dict['segmask1'] = pred_out.segmask2
                 save_dict['segmask2'] = pred_out.segmask1
-            
+
+                save_dict['hardcls1'] = hardcls1
+                save_dict['hardcls2'] = hardcls2
 
             dump_outputs_model(save_dict, train_i, i_idx, mode='active')
             
@@ -705,16 +711,21 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
     l = len(seg_list_)
     sum_seg = np.zeros(4, np.float32)
     sum_iou = np.zeros(4, np.float32)
+    sum_acc = np.zeros(4, np.float32)
     for i in range(l):
         sum_seg += np.array(seg_list_[i][0])
         sum_seg += np.array(seg_list_[i][1])
         sum_iou += np.array(IoU_list_[i])
+        sum_acc += acc_list_[2*i].astype(np.float32)
+        sum_acc += acc_list_[2*i+1].astype(np.float32)
     sum_seg /= l*2
     sum_iou /= l
+    sum_acc /= l*2
+    
     print '='*80
     print 'seg iou:', sum_seg
     print 'occ iou:', sum_iou
-
+    print 'cls acc:', sum_acc
     print 'bye'
             
     #rewards_list = np.asarray(rewards_list)
@@ -869,6 +880,12 @@ def dump_outputs_model(save_dict, train_i, i_idx, mode=''):
 
     gtr_save_name = os.path.join(eval_dir, '{}_gtr.binvox'.format(i_idx))
     save_voxel(save_dict['vox_gtr'], gtr_save_name)
+
+    if FLAGS.use_segs:
+        hc1_save_name = os.path.join(eval_dir, '{}_hardcls1'.format(i_idx))
+        hc2_save_name = os.path.join(eval_dir, '{}_hardcls2'.format(i_idx))        
+        np.save(hc1_save_name, save_dict['hardcls1'])
+        np.save(hc2_save_name, save_dict['hardcls2'])
     
     for i in xrange(FLAGS.max_episode_length):
         pred_save_name = os.path.join(eval_dir, '{}_pred{}_{}.binvox'.format(i_idx, i, mode))
