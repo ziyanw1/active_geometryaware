@@ -694,6 +694,8 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
                 save_dict['hardcls1'] = hardcls1
                 save_dict['hardcls2'] = hardcls2
 
+                save_dict['feature_tensor'] = pred_out.feature_tensor
+
             dump_outputs_model(save_dict, train_i, i_idx, mode='active')
             
         IoU_lists_ = np.asarray(IoU_lists_)
@@ -703,10 +705,6 @@ def test_active(active_mv, test_episode_num, replay_mem, train_i, rollout_obj):
         print 'dumping...'
         dump_outputs(save_dict, train_i, i_idx, mode='active')
         print 'done'
-
-    #let's compute the average iou and segiou....
-    #import ipdb
-    #ipdb.set_trace()
 
     l = len(seg_list_)
     sum_seg = np.zeros(4, np.float32)
@@ -919,6 +917,9 @@ def dump_outputs_model(save_dict, train_i, i_idx, mode=''):
             save_voxel(save_dict['pred_seg1_rot'][i,:,:,:,0], seg1_save_name)
             seg2_save_name = os.path.join(eval_dir, '{}_{}_segrot2.binvox'.format(i_idx, i))
             save_voxel(save_dict['pred_seg2_rot'][i,:,:,:,0], seg2_save_name)
+
+            feature_tensor_name = os.path.join(eval_dir, '{}_{}_feature_tensor'.format(i_idx, i))
+            np.save(feature_tensor_name, save_dict['feature_tensor'][i,:,:,:,:])
         
 def save_voxel(vox, pth):
     s = vox.shape[1]

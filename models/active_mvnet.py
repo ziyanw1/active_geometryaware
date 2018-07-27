@@ -830,6 +830,7 @@ class ActiveMVnet(object):
             )
         
         feature_tensor = feats
+        self.feature_tensor = feature_tensor
 
         UNITIZE = False
         if UNITIZE:
@@ -1510,6 +1511,7 @@ class ActiveMVnet(object):
                                if self.FLAGS.use_segs else [])
         maybe_seg_train_loss = ['seg_train_loss', 'cls_train_loss'] if self.FLAGS.use_segs else []
         maybe_seg_test_loss = ['seg_test_loss', 'cls_test_loss'] if self.FLAGS.use_segs else []
+        maybe_feature_tensor = ['feature_tensor'] if self.FLAGS.use_segs else []
         
         maybe_reproj_collection = []
         if self.FLAGS.use_segs:
@@ -1517,7 +1519,7 @@ class ActiveMVnet(object):
         
         self.vox_prediction_collection = dict2obj(dct_from_keys(
             ['vox_pred_test', 'recon_loss_list_test', 'reward_raw_test', 'rotated_vox_test', 'vox_pred_test_rot']
-            + maybe_post_seg_test + maybe_pred_seg_test + maybe_reproj_collection
+            + maybe_post_seg_test + maybe_pred_seg_test + maybe_reproj_collection + maybe_feature_tensor
         ))
 
         basic_list = [
