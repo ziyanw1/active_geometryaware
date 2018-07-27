@@ -820,15 +820,6 @@ class ActiveMVnet(object):
         #if suffix == 'test':
         #    obj1 = other.tfpy.summarize_tensor(obj1, 'obj1')
 
-        DO_DUMP = False
-        if DO_DUMP and suffix == 'test':
-            obj1 = other.tfpy.dump_tensor(
-                obj1, '/home/ricsonc/tensordumps/obj1_%d.npy', freq = 1, verbose = True
-            )
-            obj2 = other.tfpy.dump_tensor(
-                obj2, '/home/ricsonc/tensordumps/obj2_%d.npy', freq = 1, verbose = True
-            )
-        
         feature_tensor = feats
         self.feature_tensor = feature_tensor
 
@@ -842,7 +833,6 @@ class ActiveMVnet(object):
 
         actualBS = BS/self.FLAGS.max_episode_length
 
-        
         weights = tf.constant(([0.0] * (self.FLAGS.max_episode_length-1) + [1.0])*actualBS, dtype = tf.float32)
 
         #let's train seg always....
@@ -867,25 +857,6 @@ class ActiveMVnet(object):
             out = tf.reduce_sum(dists * weights) / tf.reduce_sum(weights)
             return out
 
-        def dist_from_feat(feat):
-            #BS x D
-            feat = tf.reshape(feat, (-1, 1, 1, 1, D))
-            sqdiff = tf.reduce_mean(tf.square(feature_tensor - feat), axis = -1)
-            return sqdiff
-
-        def match(dest_tensors, src_tensors):
-            '''
-            return some permutation p of src_tensors such that 
-              1. we say p[i] is matched to dest[i]
-              2. the cost of the matching (euclidean distance) is minimized
-
-            this op is not backpropable
-            '''
-            def python_match(dest_arrs, src_arrs):
-                raise NotImplementedError
-            
-            return tf.py_func(python_match, [dest_tensors, src_tensors], [tf.float32]*len(dest_tensors))
-
         foo = lambda x: other.sampling.sample_with_mask_reshape(feature_tensor, x, sample_count = 1024, bs = BS)
         bg_feats = foo(bg)
         obj1_feats = foo(obj1)
@@ -893,32 +864,19 @@ class ActiveMVnet(object):
 
         apply3 = lambda f, x: f(f(x[0], x[1]), x[2])
 
-        if True:
-            push_loss = 0.0
-            pull_loss = 0.0
+        push_loss = 0.0
+        pull_loss = 0.0
 
-            push_loss += avg_hinge_dist(bg_feats, obj1_feats, upper = 1.0)
-            push_loss += avg_hinge_dist(bg_feats, obj2_feats, upper = 1.0)
-            push_loss += avg_hinge_dist(obj1_feats, obj2_feats, upper = 1.0)
+        push_loss += avg_hinge_dist(bg_feats, obj1_feats, upper = 1.0)
+        push_loss += avg_hinge_dist(bg_feats, obj2_feats, upper = 1.0)
+        push_loss += avg_hinge_dist(obj1_feats, obj2_feats, upper = 1.0)
 
-            #pull_loss += avg_dist(bg_feats, bg_feats)
-            pull_loss += avg_hinge_dist(obj1_feats, obj1_feats, lower = 0.1)
-            pull_loss += avg_hinge_dist(obj2_feats, obj2_feats, lower = 0.1)
+        #pull_loss += avg_dist(bg_feats, bg_feats)
+        pull_loss += avg_hinge_dist(obj1_feats, obj1_feats, lower = 0.1)
+        pull_loss += avg_hinge_dist(obj2_feats, obj2_feats, lower = 0.1)
 
-            #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
-            #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
-            
-        else:
-            push_loss = -apply3(tf.minimum, [
-                avg_dist(bg_feats, obj1_feats),
-                avg_dist(bg_feats, obj2_feats),
-                avg_dist(obj1_feats, obj2_feats)
-            ])
-
-            pull_loss = tf.maximum(
-                avg_dist(obj1_feats, obj1_feats),
-                avg_dist(obj2_feats, obj2_feats)
-            )
+        #push_loss = other.tfpy.print_val(push_loss, 'push_loss')
+        #pull_loss = other.tfpy.print_val(pull_loss, 'pull_loss')
 
         total_loss = push_loss + 2 * pull_loss
 
@@ -1014,70 +972,6 @@ class ActiveMVnet(object):
                         
         seg_obj1, seg_obj2 = tf.py_func(batch_cluster, inputs, [tf.float32, tf.float32])
         
-        # if self.FLAGS.seg_cluster_mode == 'gt':
-        #     center_bg, center_obj1, center_obj2 = avg_bg, avg_obj1, avg_obj2
-
-        # elif self.FLAGS.seg_cluster_mode == 'kcenters':
-        #     assert (self.FLAGS.seg_decision_rule == 'with_occ')
-        #     flat_mask = tf.reshape(pred_vox, (BS, -1)) > self.FLAGS.iou_thres
-
-        #     ####
-        #     if DO_DUMP and suffix == 'test':
-        #         flat_mask = other.tfpy.dump_tensor(
-        #             flat_mask, '/home/ricsonc/tensordumps/flat_mask_%d.npy', freq = 1, verbose = True
-        #         )
-                
-        #         flat_features = other.tfpy.dump_tensor(
-        #             flat_features, '/home/ricsonc/tensordumps/flat_feats_%d.npy', freq = 1, verbose = True
-        #         )
-            
-        #     center_obj1, center_obj2 = other.knn.batch_knn(
-        #         flat_features, iters = 2, k = 2, mask = flat_mask, tries = 4
-        #     )
-
-        #     #matching algorithm:            
-        #     d11 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj1 - center_obj1), axis = -1) + other.const.eps)
-        #     d12 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj1 - center_obj2), axis = -1) + other.const.eps)
-        #     d21 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj2 - center_obj1), axis = -1) + other.const.eps)
-        #     d22 = tf.sqrt(tf.reduce_sum(tf.square(avg_obj2 - center_obj2), axis = -1) + other.const.eps)
-
-        #     match_same_cost = d11 + d22
-        #     match_diff_cost = d12 + d21
-        #     match_same_weight = tf.reshape(tf.cast(match_same_cost < match_diff_cost, tf.float32), (-1, 1))
-        #     match_diff_weight = 1.0 - match_same_weight
-
-        #     center_obj1 = match_same_weight * center_obj1 + match_diff_weight * center_obj2
-        #     center_obj2 = match_same_weight * center_obj2 + match_diff_weight * center_obj1
-            
-        #     center_bg = tf.zeros_like(center_obj1) #this is not used...
-            
-        # else:
-        #     raise Exception('bad cluster mode')
-
-        # dist_bg = dist_from_feat(center_bg)
-        # dist_obj1 = dist_from_feat(center_obj1)
-        # dist_obj2 = dist_from_feat(center_obj2)
-        
-        # if self.FLAGS.seg_decision_rule == 'independent':
-        #     dists = tf.stack([dist_bg, dist_obj1, dist_obj2], axis = 3)
-        #     labels = tf.argmin(dists, axis = 3)
-
-        #     seg_bg = tf.cast(tf.equal(labels, 0), tf.float32)
-        #     seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32)
-        #     seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32)
-            
-        # elif self.FLAGS.seg_decision_rule == 'with_occ':
-        #     dists = tf.stack([dist_obj1, dist_obj2], axis = 3)
-        #     labels = tf.argmin(dists, axis = 3) + 1
-
-        #     fg_mask = tf.cast(tf.squeeze(pred_vox, axis = -1) > 0.5, tf.float32)
-        #     seg_obj1 = tf.cast(tf.equal(labels, 1), tf.float32) * fg_mask
-        #     seg_obj2 = tf.cast(tf.equal(labels, 2), tf.float32) * fg_mask
-
-        # else:
-        #     raise Exception('bad decision rule')
-            
-
         #we can save these for later examination
         setattr(self, 'post_seg1_' + suffix, obj1)
         setattr(self, 'post_seg2_' + suffix, obj2)        
@@ -1110,43 +1004,6 @@ class ActiveMVnet(object):
             self.seg_obj1_rot = tf.reshape(self.seg_obj1_rot, obj1.shape)
             self.seg_obj2_rot = tf.reshape(self.seg_obj2_rot, obj2.shape)
 
-
-        ################################
-        #now also create the cls loss
-
-        # cls_loss = tf.nn.softmax_cross_entropy_with_logits(
-        #     labels = cls,
-        #     logits = logits
-        # )
-
-        # seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
-        # seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1))        
-        
-        # cls_loss_mask = tf.squeeze(obj1+obj2)
-        # cls_loss = tf.reduce_mean(cls_loss * cls_loss_mask) * 20 #just to make it even...`
-
-        # probs = tf.nn.softmax(logits)
-        # mask1 = seg_obj1
-        # mask2 = seg_obj2
-        
-        # #wew
-        # if False:
-        #     probs = cls
-        #     mask1 = obj1
-        #     mask2 = obj2
-        
-        # denom1 = tf.reduce_sum(mask1, axis = [1, 2, 3]) + other.const.eps
-        # denom2 = tf.reduce_sum(mask2, axis = [1, 2, 3]) + other.const.eps        
-        
-        # final_obj1_cls = tf.reduce_sum(probs * mask1, axis = [1, 2, 3]) / denom1
-        # final_obj2_cls = tf.reduce_sum(probs * mask2, axis = [1,2,3])  / denom2
-        
-        # setattr(self, 'cls1_' + suffix, final_obj1_cls)
-        # setattr(self, 'cls2_' + suffix, final_obj2_cls)
-
-        #ok... attempt number 2
-
-
         seg_obj1 = tf.reshape(seg_obj1, (-1, 32, 32, 32, 1))
         seg_obj2 = tf.reshape(seg_obj2, (-1, 32, 32, 32, 1)) 
 
@@ -1158,12 +1015,6 @@ class ActiveMVnet(object):
 
         setattr(self, 'logits1_' + suffix, pred_cls1_logits)
         setattr(self, 'logits2_' + suffix, pred_cls2_logits)
-
-        # if suffix == 'train':
-        #     cls1 = other.tfpy.print_val(cls1, 'cls1')
-        #     cls2 = other.tfpy.print_val(cls2, 'cls2')
-        #     pred_cls1_logits = other.tfpy.print_val(pred_cls1_logits, 'pcls1')
-        #     pred_cls2_logits = other.tfpy.print_val(pred_cls2_logits, 'pcls2')
         
         cls_loss1 = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels = cls1, logits = pred_cls1_logits)
