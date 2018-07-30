@@ -902,31 +902,30 @@ class ActiveMVnet(object):
             two_flag = False
             
             valid_labels = list(range(8))
+            scores = {pair: score(labels == pair[0], labels == pair[1])
+                      for pair in permutations(valid_labels, 2)}
             while 1:
-                scores = {pair: 0 for pair in permutations(valid_labels, 2)}
-                
-                    
-            
-            while 1:
-                pass
-            
-            for k in range(NUM_ITERS):
-                l1, l2 = random.sample(valid_labels, 2)
-                
-                if other.border_size.should_merge(labels == l1, labels == l2, RATIO):
-                    valid_labels.remove(l2)
-                    labels[labels == l2] = l1
-                    
-                if len(valid_labels) == 2:
-                    if two_flag:
-                        break
-                    else:
-                        two_flag = True
+                #get minimum cost pair
+                minpair = min(scores, key = lambda x: scores[x])
+                print('merging with cost %f' % scores[minpair])
 
-            for i, vl in enumerate(valid_labels):
-                labels[labels == vl] = i+100 #to avoid conflict
-            labels -= 100
-            
+                #remove this label
+                remove_label = minpair[1]
+                labels[remove_label] = minpair[0]
+
+                #also remove it from the scores
+                new_scores = {k:v for (k,v) in scores.values()
+                              if remove_label not in k}
+
+                for pair in new_scores:
+                    if minpair[0] in pair:
+                        new_scores[pair] = score(labels == pair[0], labels == pair[1])
+                scores = new_scores
+
+                if len(valid_labels) == 2:
+                    print('done')
+                    break
+
             return labels
 
         def group_labels(labels): #N

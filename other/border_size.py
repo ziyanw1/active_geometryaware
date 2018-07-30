@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import numpy as np
 
-def should_merge(x1, x2, ratio):
+def score(x1, x2):
+    #the larger the score, the more you should merge them
     b_size = border_size(x1, x2)
     min_volume = min(volume(x1), volume(x2))
-    #print('actual ratio is', b_size / min_volume)
-    return b_size / min_volume > ratio
+    return b_size / min_volume
 
 def volume(x):
     return np.sum(x.astype(np.float32))
