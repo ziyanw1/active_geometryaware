@@ -906,19 +906,19 @@ class ActiveMVnet(object):
                       for pair in permutations(valid_labels, 2)}
             while 1:
                 #get minimum cost pair
-                minpair = min(scores, key = lambda x: scores[x])
-                print('merging with cost %f' % scores[minpair])
+                maxpair = max(scores, key = lambda x: scores[x])
+                print('merging with cost %f' % scores[maxpair])
 
                 #remove this label
-                remove_label = minpair[1]
-                labels[remove_label] = minpair[0]
+                remove_label = maxpair[1]
+                labels[remove_label] = maxpair[0]
 
                 #also remove it from the scores
                 new_scores = {k:v for (k,v) in scores.values()
                               if remove_label not in k}
 
                 for pair in new_scores:
-                    if minpair[0] in pair:
+                    if maxpair[0] in pair:
                         new_scores[pair] = score(labels == pair[0], labels == pair[1])
                 scores = new_scores
 
@@ -945,8 +945,13 @@ class ActiveMVnet(object):
                 print 'WARNING: (near)empty maskedfeats'
                 return np.zeros(obj1.shape), np.zeros(obj2.shape)
 
+            st()
+            
             km = KMeans(n_clusters = 8, n_jobs = 8)
             km.fit(masked_feats)
+
+            st()
+            
             labels = km.predict(feats)
 
             labels = group_labels(labels)
