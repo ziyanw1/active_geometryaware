@@ -5,6 +5,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from utils import util
 from utils import tf_util
+from itertools import permutations
 
 from tensorflow.python.ops import variables as __variables__
 
@@ -895,6 +896,48 @@ class ActiveMVnet(object):
             pred_vox
         ]
 
+        def group_labels_(labels):
+            ''' input: 32 x 32 x 32, output: same'''
+            RATIO = 1.0
+            two_flag = False
+            
+            valid_labels = list(range(8))
+            while 1:
+                scores = {pair: 0 for pair in permutations(valid_labels, 2)}
+                
+                    
+            
+            while 1:
+                pass
+            
+            for k in range(NUM_ITERS):
+                l1, l2 = random.sample(valid_labels, 2)
+                
+                if other.border_size.should_merge(labels == l1, labels == l2, RATIO):
+                    valid_labels.remove(l2)
+                    labels[labels == l2] = l1
+                    
+                if len(valid_labels) == 2:
+                    if two_flag:
+                        break
+                    else:
+                        two_flag = True
+
+            for i, vl in enumerate(valid_labels):
+                labels[labels == vl] = i+100 #to avoid conflict
+            labels -= 100
+            
+            return labels
+
+        def group_labels(labels): #N
+            '''
+            this function should group the labels into K <= N clusters using the free space rule
+            '''
+            labels_shaped = np.reshape(labels, (32, 32, 32))
+            grouped_labels = group_labels_(labels_shaped)
+            grouped_unshaped = np.reshape(grouped_labels, labels.shape)
+            return grouped_unshaped
+            
         def cluster(feats, mask, bg, obj1, obj2, pred_vox):
             from sklearn.cluster import KMeans
             masked_feats = feats[mask]
@@ -902,10 +945,12 @@ class ActiveMVnet(object):
             if masked_feats.shape[0] <= 2:
                 print 'WARNING: (near)empty maskedfeats'
                 return np.zeros(obj1.shape), np.zeros(obj2.shape)
-            
-            km = KMeans(n_clusters = 2, n_jobs = 8)
+
+            km = KMeans(n_clusters = 8, n_jobs = 8)
             km.fit(masked_feats)
             labels = km.predict(feats)
+
+            labels = group_labels(labels)
 
             #possibly swapped
             pred_obj1 = np.logical_and(labels == 0, mask)
