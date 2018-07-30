@@ -896,13 +896,18 @@ class ActiveMVnet(object):
             pred_vox
         ]
 
-        def group_labels_(labels):
+        def group_labels_(labels, mask):
             ''' input: 32 x 32 x 32, output: same'''
+
             RATIO = 1.0
             two_flag = False
+
+            score = lambda pair: other.border_size.score(
+                mask*(labels == pair[0]), mask*(labels == pair[1])
+            )
             
             valid_labels = list(range(8))
-            scores = {pair: score(labels == pair[0], labels == pair[1])
+            scores = {pair: score(pair)
                       for pair in permutations(valid_labels, 2)}
             while 1:
                 #get minimum cost pair
@@ -919,7 +924,7 @@ class ActiveMVnet(object):
 
                 for pair in new_scores:
                     if maxpair[0] in pair:
-                        new_scores[pair] = score(labels == pair[0], labels == pair[1])
+                        new_scores[pair] = score(pair)
                 scores = new_scores
 
                 if len(valid_labels) == 2:
@@ -928,12 +933,13 @@ class ActiveMVnet(object):
 
             return labels
 
-        def group_labels(labels): #N
+        def group_labels(labels, mask): #N
             '''
             this function should group the labels into K <= N clusters using the free space rule
             '''
             labels_shaped = np.reshape(labels, (32, 32, 32))
-            grouped_labels = group_labels_(labels_shaped)
+            mask_shaped = np.reshape(mask, (32, 32, 32))
+            grouped_labels = group_labels_(labels_shaped, mask_shaped)
             grouped_unshaped = np.reshape(grouped_labels, labels.shape)
             return grouped_unshaped
             
@@ -945,16 +951,11 @@ class ActiveMVnet(object):
                 print 'WARNING: (near)empty maskedfeats'
                 return np.zeros(obj1.shape), np.zeros(obj2.shape)
 
-            st()
-            
             km = KMeans(n_clusters = 8, n_jobs = 8)
             km.fit(masked_feats)
-
-            st()
-            
             labels = km.predict(feats)
-
-            labels = group_labels(labels)
+            
+            labels = group_labels(labels, mask)
 
             #possibly swapped
             pred_obj1 = np.logical_and(labels == 0, mask)
