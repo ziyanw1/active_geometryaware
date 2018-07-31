@@ -6,6 +6,8 @@ import tensorflow.contrib.slim as slim
 from utils import util
 from utils import tf_util
 from itertools import permutations
+import ipdb
+st = ipdb.set_trace
 
 from tensorflow.python.ops import variables as __variables__
 
@@ -919,18 +921,24 @@ class ActiveMVnet(object):
                 labels[remove_label] = maxpair[0]
 
                 #also remove it from the scores
-                new_scores = {k:v for (k,v) in scores.values()
+                new_scores = {k:v for (k,v) in scores.items()
                               if remove_label not in k}
 
                 for pair in new_scores:
                     if maxpair[0] in pair:
                         new_scores[pair] = score(pair)
-                scores = new_scores
 
+                scores = new_scores
+                valid_labels.remove(remove_label)
                 if len(valid_labels) == 2:
-                    print('done')
+                    print('done', scores)
                     break
 
+            #now we should reassign...
+            labels[labels == valid_labels[0]] = 100
+            labels[labels == valid_labels[1]] = 101
+            labels -= 100
+            
             return labels
 
         def group_labels(labels, mask): #N
