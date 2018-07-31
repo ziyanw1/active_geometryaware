@@ -962,6 +962,10 @@ class ActiveMVnet(object):
             km = KMeans(n_clusters = 8, n_jobs = 8)
             km.fit(masked_feats)
             labels = km.predict(feats)
+
+            #0 through 8
+            overclustered = (labels.copy()+1)*mask
+            overclustered = overclustered.astype(np.int32)
             
             labels = group_labels(labels, mask)
 
@@ -995,46 +999,52 @@ class ActiveMVnet(object):
             if sameiou >= diffiou:
                 if verbose:
                     print 'same: ', sameiou
-                return pred_obj1, pred_obj2
+                return pred_obj1, pred_obj2, overclustered
             else:
                 if verbose:
                     print 'diff: ', diffiou
-                return pred_obj2, pred_obj1
+                return pred_obj2, pred_obj1, overclustered
             
         def batch_cluster_(feats, mask, bg, obj1, obj2, pred_vox):
             
             bs = feats.shape[0]
             seg1s = []
             seg2s = []
+            over = []
             
             for i in range(bs):
-                seg1, seg2 = cluster(feats[i], mask[i], bg[i], obj1[i], obj2[i], pred_vox[i])
+                seg1, seg2, ov = cluster(feats[i], mask[i], bg[i], obj1[i], obj2[i], pred_vox[i])
                 seg1s.append(seg1)
                 seg2s.append(seg2)
+                over.append(ov)
                 
             seg1s = np.stack(seg1s, axis = 0)
             seg2s = np.stack(seg2s, axis = 0)
+            over = np.stack(over, axis = 0)
 
             seg1s = np.squeeze(seg1s)
             seg2s = np.squeeze(seg2s)
+            over = np.squeeze(over)
 
             seg1s = seg1s.astype(np.float32)
             seg2s = seg2s.astype(np.float32)
+            over = over.astype(np.float32)
 
-            return seg1s, seg2s
+            return seg1s, seg2s, over
 
         def batch_cluster(*args):
             from ipdb import launch_ipdb_on_exception
             with launch_ipdb_on_exception():
                 return batch_cluster_(*args)
                         
-        seg_obj1, seg_obj2 = tf.py_func(batch_cluster, inputs, [tf.float32, tf.float32])
+        seg_obj1, seg_obj2, over = tf.py_func(batch_cluster, inputs, [tf.float32]*3)
         
         #we can save these for later examination
         setattr(self, 'post_seg1_' + suffix, obj1)
         setattr(self, 'post_seg2_' + suffix, obj2)        
         setattr(self, 'pred_seg1_' + suffix, seg_obj1)
         setattr(self, 'pred_seg2_' + suffix, seg_obj2)
+        setattr(self, 'over_' + suffix, over)
 
         if suffix == 'test':
             def rotate_voxels(vox, az0, el0):
@@ -1416,7 +1426,7 @@ class ActiveMVnet(object):
         maybe_pred_seg_train = (['pred_seg1_train', 'pred_seg2_train', 'logits1_train', 'logits2_train']
                                 if self.FLAGS.use_segs else [])
         maybe_pred_seg_test = (['pred_seg1_test', 'pred_seg2_test', 'seg_obj1_rot', 'seg_obj2_rot',
-                                'logits1_test', 'logits2_test']
+                                'logits1_test', 'logits2_test', 'over_test']
                                if self.FLAGS.use_segs else [])
         maybe_seg_train_loss = ['seg_train_loss', 'cls_train_loss'] if self.FLAGS.use_segs else []
         maybe_seg_test_loss = ['seg_test_loss', 'cls_test_loss'] if self.FLAGS.use_segs else []
