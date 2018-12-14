@@ -1,6 +1,6 @@
 # MVnet active
 
-## data
+## Data preparation
 
 All rendering datas are located in data/data_cache/blender_renderings/$CATEGORY_INDEX/res$RESOLUTION_$NAME/$OBJECT_NAME
 
@@ -14,14 +14,14 @@ To generate data of double object scene, you can run the following command.
 
 `blender blank.blend -b -P render_depth_pair_lambert_main_double.py -- $LIST1_PATH $LIST2_PATH $DATASET_NAME $RESOLUTION`
 
-## train script
+## Train MVnet active
 
 To train active mvnet, run the following command
 
 `python train_active_mvnet.py --task_name=$TASK_NAME --learning_rate=1e-4 --max_iter=10000 --batch_size=4 --voxel_resolution=64 --resolution=128
 `
 
-## test script
+## Test MVnet active
 
 To test active mvnet, run the following command
 
