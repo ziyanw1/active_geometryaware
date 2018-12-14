@@ -14,13 +14,13 @@ The files in each directory contains RGB and inverse depth data. The nameing rul
 
 To train rgb to depth network, run the following command
 
-'python train_ae_rgb2d_persp_lmdb.py'
+`python train_ae_rgb2d_persp_lmdb.py`
 
 To train active mvnet, run the following command
 
-'python train_active_mvnet.py --task_name=$TASK_NAME --learning_rate=1e-4 \
+`python train_active_mvnet.py --task_name=$TASK_NAME --learning_rate=1e-4 \
      --max_iter=10000 --batch_size=4 --voxel_resolution=64 --resolution=128
-'
+`
 
 ## test script
 
@@ -28,6 +28,6 @@ To test rgb to depth network, run
 
 To test active mvnet, run the following command
 
-'python test_active_mvnet.py --LOG_DIR=$LOG_DIR --task_name=$TASK_NAME --test_iter=$ITER_OF_RESTORE_MODEL \
+`python test_active_mvnet.py --LOG_DIR=$LOG_DIR --task_name=$TASK_NAME --test_iter=$ITER_OF_RESTORE_MODEL \
     --test_episode_num=$NUM_OF_TOTAL_TEST_EPISODES --pretrain_restore=True --pretrain_restore_path=$PATH_TO_RESTORE_MODEL 
-'
+`
