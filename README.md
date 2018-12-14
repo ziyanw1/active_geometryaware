@@ -1,16 +1,5 @@
 # MVnet active
 
-## train script:
-
-'python train_ae_rgb2d_persp_lmdb.py'
-
-args are defined in variable FLAGS. 
-## network models and lmdb loader
-
-autoencoder (RGB -> inverse depth) are defined in models/ae_rgb2depth.py.
-
-lmdb loader is defined in models/rgb2_lmdb_loader.py
-
 ## lmdb generator
 
 the script for generating lmdb data is data/write_lmdb_rgbAndDepth.py
@@ -21,9 +10,24 @@ All rendering datas are located in data/data_cache/blender_renderings/$CATEGORY_
 
 The files in each directory contains RGB and inverse depth data. The nameing rules are RGB_$AZIMUTH_$ELEVATION.jpg invZ_$AZIMUTH_$ELEVATION.npy
 
-## TODO
+## train script
 
-- add restore and save for training
-- add test and logging
-- add unprojection part
-- add reninforcement learning part for camera actor
+To train rgb to depth network, run the following command
+
+'python train_ae_rgb2d_persp_lmdb.py'
+
+To train active mvnet, run the following command
+
+'python train_active_mvnet.py --task_name=$TASK_NAME --learning_rate=1e-4 \
+     --max_iter=10000 --batch_size=4 --voxel_resolution=64 --resolution=128
+'
+
+## test script
+
+To test rgb to depth network, run
+
+To test active mvnet, run the following command
+
+'python test_active_mvnet.py --LOG_DIR=$LOG_DIR --task_name=$TASK_NAME --test_iter=$ITER_OF_RESTORE_MODEL \
+    --test_episode_num=$NUM_OF_TOTAL_TEST_EPISODES --pretrain_restore=True --pretrain_restore_path=$PATH_TO_RESTORE_MODEL 
+'
