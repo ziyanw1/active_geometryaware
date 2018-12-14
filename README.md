@@ -20,10 +20,6 @@ To generate data of double object scene, you can run the following command.
 
 ## train script
 
-To train rgb to depth network, run the following command
-
-`python train_ae_rgb2d_persp_lmdb.py`
-
 To train active mvnet, run the following command
 
 `python train_active_mvnet.py --task_name=$TASK_NAME --learning_rate=1e-4 \
