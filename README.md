@@ -10,6 +10,14 @@ All rendering datas are located in data/data_cache/blender_renderings/$CATEGORY_
 
 The files in each directory contains RGB and inverse depth data. The nameing rules are RGB_$AZIMUTH_$ELEVATION.jpg invZ_$AZIMUTH_$ELEVATION.npy
 
+To generate data of single object scene, you can run the following command.
+
+`blender blank.blend -b -P data/render_scripts/render_depth_pair_lambert_main.py -- $CATE_NUM $LIST_PATH $DATASET_NAME $RESOLUTION`
+
+To generate data of double object scene, you can run the following command.
+
+`blender blank.blend -b -P render_depth_pair_lambert_main_double.py -- $LIST1_PATH $LIST2_PATH $DATASET_NAME $RESOLUTION`
+
 ## train script
 
 To train rgb to depth network, run the following command
