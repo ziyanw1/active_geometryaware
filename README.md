@@ -1,9 +1,5 @@
 # MVnet active
 
-## lmdb generator
-
-the script for generating lmdb data is data/write_lmdb_rgbAndDepth.py
-
 ## data
 
 All rendering datas are located in data/data_cache/blender_renderings/$CATEGORY_INDEX/res$RESOLUTION_$NAME/$OBJECT_NAME
