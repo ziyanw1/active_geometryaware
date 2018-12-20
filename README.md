@@ -27,3 +27,8 @@ To test active mvnet, run the following command
 
 `python test_active_mvnet.py --LOG_DIR=$LOG_DIR --task_name=$TASK_NAME --test_iter=$ITER_OF_RESTORE_MODEL --test_episode_num=$NUM_TEST_EPISODES --pretrain_restore=True --pretrain_restore_path=$PATH_TO_RESTORE_MODEL 
 `
+
+## Info about branches
+
+The `seg2` branch should be used to run experiments involving object segmentation. The `master` branch is appropriate for reconstruction tasks.
+
